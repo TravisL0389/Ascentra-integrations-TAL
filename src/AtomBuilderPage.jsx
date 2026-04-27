@@ -359,7 +359,6 @@ export default function AtomBuilderPage({
               agents={agents}
               plans={plans}
               embedded
-              fullScreen
               contextLabel="Atom Builder"
               initialPlanName={selectedPlan}
             />

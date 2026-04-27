@@ -1397,7 +1397,7 @@ export default function AutomationAtomBuilder({
     setNodes((current) => current.map(applyPresetToNode));
   }, []);
 
-  const immersiveMode = fullScreen || contextLabel === 'Atom Builder' || contextLabel === 'Admin QA';
+  const immersiveMode = fullScreen || contextLabel === 'Admin QA';
   const wrapperPadding = immersiveMode
     ? '0'
     : embedded
