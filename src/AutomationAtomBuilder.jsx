@@ -38,6 +38,7 @@ import {
 import { hasSupabaseConfig } from './lib/supabaseClient.js';
 import {
   deleteAutomationFlow,
+  getAutomationBackendStatus,
   listAutomationFlows,
   listAutomationRuns,
   listAutomationRunSteps,
@@ -53,8 +54,8 @@ const BUILDER_BORD = 'rgba(255,255,255,0.08)';
 const BUILDER_ACCENT = '#a855f7';
 
 const PLAN_RULES = {
-  Starter: { atoms: 0, label: 'Preview only', editable: false, note: 'Starter can preview the builder, but live atoms unlock on paid plans.' },
-  Pro: { atoms: 3, label: '3 atoms', editable: true, note: 'Pro unlocks up to 3 live atoms per automation.' },
+  Starter: { atoms: 0, label: 'Locked on Starter', editable: false, note: 'Atom Builder is a Pro subscription feature and stays locked on Starter.' },
+  Pro: { atoms: 3, label: '3 atoms', editable: true, note: 'Pro unlocks Atom Builder with up to 3 live atoms per automation.' },
   Enterprise: { atoms: 10, label: '10 atoms', editable: true, note: 'Enterprise unlocks up to 10 live atoms with advanced branching and approvals.' },
 };
 
@@ -644,6 +645,9 @@ export default function AutomationAtomBuilder({
   accent = '#00C9A7',
   embedded = false,
   sectionId = 'builder-hub',
+  adminMode = false,
+  fullScreen = false,
+  contextLabel = 'Main hub',
 }) {
   const templates = useMemo(() => createTemplates(agents), [agents]);
   const libraryAgents = useMemo(() => buildAgentLibrary(agents), [agents]);
@@ -674,13 +678,21 @@ export default function AutomationAtomBuilder({
   const [backendRuns, setBackendRuns] = useState([]);
   const [runsBusy, setRunsBusy] = useState(false);
   const [activeRunId, setActiveRunId] = useState(null);
+  const [backendStatus, setBackendStatus] = useState(null);
+  const [backendStatusBusy, setBackendStatusBusy] = useState(false);
 
   const planRule = PLAN_RULES[activePlanName];
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) || null;
   const selectedNodeSchema = getActiveNodeSchema(selectedNode);
   const liveAtomCount = nodes.length;
   const zoomScale = zoom / 100;
-  const backendLabel = hasSupabaseConfig ? 'Supabase connected' : 'Local preview only';
+  const backendLabel = !hasSupabaseConfig
+    ? adminMode ? 'Local QA preview' : 'Backend not connected'
+    : backendStatus?.ok
+      ? 'Frontend and backend linked'
+      : backendStatusBusy
+        ? 'Checking backend'
+        : 'Supabase configured';
 
   const hydrateMakeConfig = (type, title, config) => {
     const presetAgentId = config?.agentId || null;
@@ -824,7 +836,7 @@ export default function AutomationAtomBuilder({
 
   const appendAtom = (item, branch = false) => {
     if (!planRule.editable) {
-      setNotice('Starter can explore the preview, but Pro and Enterprise unlock buildable atoms.');
+      setNotice('Atom Builder is included with Pro and Enterprise. Starter does not unlock live automation drafting.');
       return;
     }
 
@@ -856,7 +868,7 @@ export default function AutomationAtomBuilder({
   const updateSelectedNode = (field, value) => {
     if (!selectedNode) return;
     if (!planRule.editable && activePlanName === 'Starter') {
-      setNotice('The Starter view is a guided preview. Switch to Pro or Enterprise to customize each atom.');
+      setNotice('Starter does not include Atom Builder editing. Switch to Pro or Enterprise to customize each atom.');
       return;
     }
 
@@ -876,7 +888,7 @@ export default function AutomationAtomBuilder({
   const updateSelectedMakeConfig = (field, value) => {
     if (!selectedNode || !nodeSupportsMake(selectedNode)) return;
     if (!planRule.editable && activePlanName === 'Starter') {
-      setNotice('The Starter view is a guided preview. Switch to Pro or Enterprise to connect live Make scenarios.');
+      setNotice('Starter does not include live Atom Builder connections. Switch to Pro or Enterprise to connect Make scenarios.');
       return;
     }
 
@@ -922,6 +934,34 @@ export default function AutomationAtomBuilder({
       setNotice(error.message || 'Failed to load automation run history.');
     } finally {
       setRunsBusy(false);
+    }
+  };
+
+  const refreshBackendStatus = async ({ quiet = false } = {}) => {
+    if (!hasSupabaseConfig) {
+      setBackendStatus(null);
+      return;
+    }
+
+    setBackendStatusBusy(true);
+    try {
+      const status = await getAutomationBackendStatus();
+      setBackendStatus(status);
+      if (!quiet) {
+        setNotice('Frontend and backend handshake confirmed.');
+      }
+    } catch (error) {
+      setBackendStatus({
+        ok: false,
+        frontendToEdge: false,
+        serverCredentials: false,
+        error: error.message || 'Backend health check failed.',
+      });
+      if (!quiet) {
+        setNotice(error.message || 'Backend health check failed.');
+      }
+    } finally {
+      setBackendStatusBusy(false);
     }
   };
 
@@ -1118,8 +1158,8 @@ export default function AutomationAtomBuilder({
 
   const activatePath = async () => {
     if (!planRule.editable) {
-      setRunState('Preview');
-      setNotice('Starter can preview the builder, but live Make activation unlocks on paid plans.');
+      setRunState('Locked');
+      setNotice('Starter does not include Atom Builder execution. Upgrade to Pro or Enterprise to activate paths.');
       return;
     }
 
@@ -1241,7 +1281,7 @@ export default function AutomationAtomBuilder({
 
   const removeSelectedNode = () => {
     if (!selectedNode || !planRule.editable) {
-      setNotice('This preview path is locked until a paid plan is selected.');
+      setNotice('This path is locked until Pro or Enterprise is selected.');
       return;
     }
 
@@ -1344,6 +1384,10 @@ export default function AutomationAtomBuilder({
   }, []);
 
   useEffect(() => {
+    refreshBackendStatus({ quiet: true });
+  }, []);
+
+  useEffect(() => {
     if (flowId) {
       refreshRuns(flowId);
     }
@@ -1353,20 +1397,76 @@ export default function AutomationAtomBuilder({
     setNodes((current) => current.map(applyPresetToNode));
   }, []);
 
-  const wrapperPadding = embedded ? '32px 0 12px' : '108px 32px 48px';
-  const wrapperMinHeight = embedded ? 'auto' : '100vh';
+  const immersiveMode = fullScreen || contextLabel === 'Atom Builder' || contextLabel === 'Admin QA';
+  const wrapperPadding = immersiveMode
+    ? '0'
+    : embedded
+      ? '32px 0 12px'
+      : '108px 32px 48px';
+  const wrapperMinHeight = immersiveMode ? '100vh' : embedded ? 'auto' : '100vh';
+  const frameInset = immersiveMode ? 18 : 0;
+  const shellOffset = immersiveMode ? 92 : 0;
+  const workspaceMinHeight = immersiveMode ? `calc(100vh - ${shellOffset + frameInset * 2}px)` : 'auto';
+  const canvasHeight = immersiveMode ? `calc(100vh - ${shellOffset + frameInset * 2 + 220}px)` : 760;
   const WrapperTag = embedded ? 'section' : 'main';
 
   return (
     <WrapperTag id={sectionId} style={{ minHeight: wrapperMinHeight, padding: wrapperPadding, position: 'relative', overflow: 'hidden' }}>
       <div style={{ position: 'absolute', inset: 0, background: `radial-gradient(circle at 15% 10%, rgba(168,85,247,0.14), transparent 30%), radial-gradient(circle at 88% 14%, rgba(0,201,167,0.1), transparent 32%), ${BUILDER_BG}` }} />
       <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.03) 1px, transparent 1px)', backgroundSize: '28px 28px', opacity: 0.45 }} />
-      <div style={{ position: 'relative', maxWidth: 1680, margin: '0 auto' }}>
+        {immersiveMode ? (
+          <style>{`
+            [data-builder-mode="fullscreen"] .builder-layout > :nth-child(2) {
+              display: flex;
+              flex-direction: column;
+              min-height: calc(100vh - 310px);
+            }
+            [data-builder-mode="fullscreen"] .builder-layout > :nth-child(2) > div:first-child {
+              height: calc(100vh - 310px) !important;
+              min-height: 780px !important;
+            }
+            [data-builder-mode="fullscreen"] .builder-layout > :nth-child(2) > div:first-child > div:first-child {
+              height: 100%;
+            }
+            [data-builder-mode="fullscreen"] .builder-layout > :nth-child(1),
+            [data-builder-mode="fullscreen"] .builder-layout > :nth-child(3) {
+              max-height: calc(100vh - 180px);
+              overflow: auto;
+              scrollbar-width: thin;
+            }
+            @media (max-width: 1180px) {
+              [data-builder-mode="fullscreen"] .builder-layout {
+                grid-template-columns: 1fr;
+              }
+              [data-builder-mode="fullscreen"] .builder-layout > :nth-child(1),
+              [data-builder-mode="fullscreen"] .builder-layout > :nth-child(2),
+              [data-builder-mode="fullscreen"] .builder-layout > :nth-child(3) {
+                max-height: none;
+                min-height: auto;
+              }
+              [data-builder-mode="fullscreen"] .builder-layout > :nth-child(2) > div:first-child {
+                min-height: 70vh !important;
+                height: 70vh !important;
+              }
+            }
+          `}</style>
+        ) : null}
+        <div
+          data-builder-mode={immersiveMode ? 'fullscreen' : embedded ? 'embedded' : 'default'}
+          style={{
+            position: 'relative',
+            maxWidth: immersiveMode ? 'none' : 1680,
+            width: immersiveMode ? '100vw' : '100%',
+            margin: immersiveMode ? '0 calc(50% - 50vw)' : '0 auto',
+            minHeight: workspaceMinHeight,
+            padding: immersiveMode ? `${frameInset}px` : 0,
+          }}
+        >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, marginBottom: 18, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             {embedded ? (
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 14px', borderRadius: 999, border: `1px solid ${BUILDER_BORD}`, background: BUILDER_SURF, color: 'rgba(255,255,255,0.78)', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase' }}>
-                <Workflow size={13} color={accent} /> Main hub
+                <Workflow size={13} color={accent} /> {contextLabel}
               </div>
             ) : (
               <button onClick={onBack} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 14px', borderRadius: 12, border: `1px solid ${BUILDER_BORD}`, background: BUILDER_SURF, color: 'rgba(255,255,255,0.78)', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
@@ -1374,7 +1474,7 @@ export default function AutomationAtomBuilder({
               </button>
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 9, color: 'rgba(255,255,255,0.72)', fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase' }}>
-              <span style={{ color: BUILDER_ACCENT }}>Automation Builder</span>
+              <span style={{ color: BUILDER_ACCENT }}>Atom Builder</span>
               <span style={{ opacity: 0.4 }}>/</span>
               <span>{activePlanName}</span>
             </div>
@@ -1392,10 +1492,12 @@ export default function AutomationAtomBuilder({
         <div style={{ marginBottom: 18, display: 'flex', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap', alignItems: 'end' }}>
           <div style={{ minWidth: 280, flex: '1 1 520px' }}>
             <div style={{ fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 38, lineHeight: 1.02, fontWeight: 800, color: '#fff', letterSpacing: '-0.04em', marginBottom: 8 }}>
-              Build your own agent-made automation paths.
+              {adminMode ? 'Validate automation flows before customers use them.' : 'Atom Builder for paid automation teams.'}
             </div>
             <div style={{ maxWidth: 760, fontFamily: 'Manrope, sans-serif', fontSize: 14, lineHeight: 1.6, color: 'rgba(255,255,255,0.56)' }}>
-              Preview the full builder on Starter, then unlock live atoms on paid plans. Pro caps each path at 3 atoms. Enterprise expands to 10 with richer branching, approvals, and more automation characters as the platform grows.
+              {adminMode
+                ? 'Run the product as an operator, test saved paths, inspect backend runs, and verify that Pro and Enterprise automations behave the way subscribers expect before rollout.'
+                : 'Atom Builder is a Pro feature. Pro teams can run compact automation paths with up to 3 live atoms, while Enterprise expands the graph to 10 with deeper branching and approvals.'}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -1408,7 +1510,18 @@ export default function AutomationAtomBuilder({
           </div>
         </div>
 
-        <div className="builder-layout" style={{ display: 'grid', gridTemplateColumns: '300px minmax(0, 1fr) 340px', gap: 16, alignItems: 'start' }}>
+          <div
+            className="builder-layout"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: immersiveMode
+                ? '320px minmax(0, 1fr) 360px'
+                : '300px minmax(0, 1fr) 340px',
+              gap: immersiveMode ? 18 : 16,
+              alignItems: 'stretch',
+              minHeight: immersiveMode ? `calc(${workspaceMinHeight} - 146px)` : 'auto',
+            }}
+          >
           <aside style={{ borderRadius: 18, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(8,12,22,0.82)', boxShadow: '0 20px 45px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
             <div style={{ padding: '18px 18px 14px', borderBottom: `1px solid ${BUILDER_BORD}` }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -1560,7 +1673,7 @@ export default function AutomationAtomBuilder({
                     <Redo2 size={15} />
                   </button>
                   <button onClick={() => setNotice('Preview run simulated. Connectors, approvals, and agent prompts are ready to present in sales demos today.')} style={{ padding: '11px 14px', borderRadius: 12, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.04)', color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                    <Eye size={14} /> Preview
+                    <Eye size={14} /> {adminMode ? 'QA preview' : 'Preview'}
                   </button>
                   <button onClick={() => saveFlowToBackend()} disabled={saveBusy} style={{ padding: '11px 14px', borderRadius: 12, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.04)', color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 8, cursor: saveBusy ? 'wait' : 'pointer', opacity: saveBusy ? 0.72 : 1 }}>
                     <Database size={14} /> {saveBusy ? 'Saving...' : 'Save backend'}
@@ -1615,10 +1728,10 @@ export default function AutomationAtomBuilder({
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 16px', borderBottom: '1px solid rgba(90,82,110,0.08)', background: 'linear-gradient(180deg, rgba(255,255,255,0.96), rgba(246,242,251,0.92))' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <div style={{ padding: '6px 9px', borderRadius: 999, background: 'rgba(168,85,247,0.12)', color: '#5b2c88', fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase' }}>
-                        Beta builder
+                        {adminMode ? 'Admin QA lab' : 'Atom Builder'}
                       </div>
                       <div style={{ padding: '6px 9px', borderRadius: 999, background: 'rgba(17,24,39,0.05)', color: '#493d58', fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase' }}>
-                        {planRule.editable ? 'Canvas active' : 'Preview mode'}
+                        {planRule.editable ? 'Canvas active' : 'Locked on Starter'}
                       </div>
                       <div style={{ color: 'rgba(73,61,88,0.66)', fontFamily: 'Manrope, sans-serif', fontSize: 12 }}>
                         Click a module, branch the path, and tune each step in the inspector.
@@ -1645,7 +1758,7 @@ export default function AutomationAtomBuilder({
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                         <div>
                           <div style={{ color: '#2c2335', fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 14, fontWeight: 800 }}>
-                            {planRule.editable ? 'Live graph ready' : 'Interactive preview'}
+                            {planRule.editable ? 'Live graph ready' : 'Upgrade required'}
                           </div>
                           <div style={{ color: 'rgba(73,61,88,0.65)', fontFamily: 'Manrope, sans-serif', fontSize: 11, marginTop: 3 }}>
                             Drag, connect, and tune your agent path.
@@ -1856,7 +1969,7 @@ export default function AutomationAtomBuilder({
                         <Lock size={15} color="#f59e0b" /> Paid feature preview
                       </div>
                       <div style={{ fontFamily: 'Manrope, sans-serif', fontSize: 12, lineHeight: 1.55, color: 'rgba(255,255,255,0.62)' }}>
-                        Starter can explore the full motion and structure of the builder. Pro unlocks 3 live atoms. Enterprise expands to 10 with deeper branching and integrations.
+                        Atom Builder unlocks on Pro with 3 live atoms. Enterprise expands to 10 with deeper branching, approvals, and integrations.
                       </div>
                     </div>
                   )}
@@ -1940,7 +2053,7 @@ export default function AutomationAtomBuilder({
 
               <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 12, marginTop: 14 }}>
                 <div style={{ padding: '14px 16px', borderRadius: 16, background: 'rgba(255,255,255,0.04)', border: `1px solid ${BUILDER_BORD}`, color: 'rgba(255,255,255,0.74)', fontFamily: 'Manrope, sans-serif', fontSize: 13 }}>
-                  <span style={{ color: '#fff', fontWeight: 700 }}>Builder note:</span> {notice}
+                    <span style={{ color: '#fff', fontWeight: 700 }}>Atom Builder note:</span> {notice}
                 </div>
                 <div style={{ padding: '14px 16px', borderRadius: 16, background: 'rgba(255,255,255,0.04)', border: `1px solid ${BUILDER_BORD}` }}>
                   <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.16em', color: 'rgba(255,255,255,0.42)', textTransform: 'uppercase', marginBottom: 8 }}>Execution preview</div>
@@ -2262,7 +2375,7 @@ export default function AutomationAtomBuilder({
                     {inspectorTab === 'run' && (
                       <div style={{ display: 'grid', gap: 10 }}>
                         {[
-                          ['Last result', planRule.editable ? 'Passed' : 'Preview only'],
+                          ['Last result', planRule.editable ? 'Passed' : 'Locked on Starter'],
                           ['Execution time', '1.9 sec'],
                           ['Review gate', selectedNode.approval],
                           ['Fallback retries', `${selectedNode.retries}`],
@@ -2356,7 +2469,7 @@ export default function AutomationAtomBuilder({
                     );
                   }) : (
                     <div style={{ color: 'rgba(255,255,255,0.58)', fontFamily: 'Manrope, sans-serif', fontSize: 12, lineHeight: 1.6 }}>
-                      No saved automations yet. Save backend to keep drafts and reload them later.
+                      No saved automations yet. Save to the backend to keep QA drafts and reload them later.
                     </div>
                   )}
                 </div>
@@ -2371,15 +2484,55 @@ export default function AutomationAtomBuilder({
               </div>
 
               <div style={{ padding: 16, borderRadius: 16, background: 'rgba(255,255,255,0.03)', border: `1px solid ${BUILDER_BORD}` }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 15, fontWeight: 700 }}>
-                  <Database size={15} color={accent} /> Backend status
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 15, fontWeight: 700 }}>
+                    <Database size={15} color={accent} /> Backend status
+                  </div>
+                  <button onClick={() => refreshBackendStatus()} disabled={backendStatusBusy || !hasSupabaseConfig} style={{ width: 32, height: 32, borderRadius: 10, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.04)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: backendStatusBusy || !hasSupabaseConfig ? 'not-allowed' : 'pointer', opacity: backendStatusBusy || !hasSupabaseConfig ? 0.55 : 1 }}>
+                    <RefreshCw size={14} />
+                  </button>
                 </div>
                 <div style={{ color: 'rgba(255,255,255,0.58)', fontFamily: 'Manrope, sans-serif', fontSize: 12, lineHeight: 1.6 }}>
                   {hasSupabaseConfig
                     ? `This builder is ready to save flows and run scenarios through Supabase. ${flowId ? `Flow ID: ${flowId}` : 'Save once to create the first backend record.'}`
                     : 'Supabase keys are not configured in this local app yet, so the builder is still running in local preview mode.'}
                 </div>
+                <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
+                  {[
+                    ['Frontend env', hasSupabaseConfig ? 'Configured' : 'Missing keys'],
+                    ['Edge function', hasSupabaseConfig ? (backendStatus?.frontendToEdge ? 'Reachable' : backendStatusBusy ? 'Checking' : 'Unverified') : 'Unavailable'],
+                    ['Server credentials', hasSupabaseConfig ? (backendStatus?.serverCredentials ? 'Ready' : backendStatusBusy ? 'Checking' : 'Unverified') : 'Unavailable'],
+                  ].map(([label, value]) => (
+                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '10px 11px', borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: `1px solid ${BUILDER_BORD}`, color: 'rgba(255,255,255,0.7)', fontFamily: 'Manrope, sans-serif', fontSize: 12 }}>
+                      <span>{label}</span>
+                      <span style={{ color: '#fff', fontWeight: 700, textAlign: 'right' }}>{value}</span>
+                    </div>
+                  ))}
+                </div>
+                {backendStatus?.error && (
+                  <div style={{ marginTop: 10, color: '#fda4af', fontFamily: 'Manrope, sans-serif', fontSize: 12, lineHeight: 1.55 }}>
+                    {backendStatus.error}
+                  </div>
+                )}
               </div>
+
+              {adminMode && (
+                <div style={{ padding: 16, borderRadius: 16, background: 'rgba(255,255,255,0.03)', border: `1px solid ${BUILDER_BORD}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 15, fontWeight: 700 }}>
+                    <ShieldCheck size={15} color={accent} /> Admin QA checklist
+                  </div>
+                  {[
+                    'Load a Pro or Enterprise draft and confirm the right atom count limit.',
+                    'Send a node test and verify the webhook payload plus response preview.',
+                    'Activate the full path and inspect backend run history for each step.',
+                    'Review locked Starter behavior so subscribers only get what the plan promises.',
+                  ].map((item) => (
+                    <div key={item} style={{ display: 'flex', alignItems: 'flex-start', gap: 9, marginTop: 8, color: 'rgba(255,255,255,0.68)', fontFamily: 'Manrope, sans-serif', fontSize: 12, lineHeight: 1.5 }}>
+                      <Check size={13} color={accent} style={{ marginTop: 2, flexShrink: 0 }} /> {item}
+                    </div>
+                  ))}
+                </div>
+              )}
 
               <div style={{ padding: 16, borderRadius: 16, background: 'rgba(255,255,255,0.03)', border: `1px solid ${BUILDER_BORD}` }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 15, fontWeight: 700 }}>
@@ -2444,9 +2597,9 @@ export default function AutomationAtomBuilder({
                 </div>
                 <div style={{ color: 'rgba(255,255,255,0.58)', fontFamily: 'Manrope, sans-serif', fontSize: 12, lineHeight: 1.6 }}>
                   {activePlanName === 'Starter'
-                    ? 'Starter is a sales-ready preview. It shows the builder surface, canvas behavior, and inspector flow without enabling live module creation.'
+                    ? 'Starter does not include Atom Builder access for subscribers. Keep this state locked so the product promise stays clear.'
                     : activePlanName === 'Pro'
-                      ? 'Pro is ideal for compact paid automations: one trigger, a small branch or decision layer, and one follow-through atom up to 3 total.'
+                      ? 'Pro is the paid Atom Builder tier: one trigger, a small branch or decision layer, and one follow-through atom up to 3 total.'
                       : 'Enterprise opens the full canvas: 10 atoms, more approvals, deeper branching, and room for future automation characters.'}
                 </div>
               </div>

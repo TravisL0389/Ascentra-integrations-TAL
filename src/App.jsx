@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { X, Check, ArrowRight, Sparkles, Code2, Workflow, MessageSquare,
          Brain, Network, BarChart3, ShieldCheck, BookMarked, Clock,
          Play, ChevronDown, Minus, ArrowLeft, CalendarDays, CreditCard,
-         FileText, Mail, Rocket, Search, TerminalSquare, Users } from 'lucide-react';
+         FileText, Mail, Rocket, Search, TerminalSquare, Users, Crown } from 'lucide-react';
 import AutomationAtomBuilder from './AutomationAtomBuilder.jsx';
+import AtomBuilderPage from './AtomBuilderPage.jsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DESIGN TOKENS
@@ -300,11 +301,11 @@ const AgentCard = ({ agent, onClick, index }) => {
 const FEAT_LABELS = ['Agents active','Tasks / month','Workspaces','Team sharing','Priority queue','API access','SSO & audit logs','Custom agents','SLA guarantee','Atom Builder access'];
 const PLANS = [
   { name:'Starter',    desc:'For individuals exploring AI agents.',     priceM:0,    priceA:0,    label:'Free',   cta:'Get started free',    featured:false,
-    vals:['2 agents','50 / month','1',false,false,false,false,false,false,'Preview only'] },
+    vals:['2 agents','50 / month','1',false,false,false,false,false,false,'Not included'] },
   { name:'Pro',        desc:'For ambitious teams doing real work.',      priceM:29,   priceA:23,   label:null,     cta:'Start 14-day trial',  featured:true,
-    vals:['All 10 agents','Unlimited','5',true,true,true,false,false,false,'Up to 3 atoms'] },
+    vals:['All 10 agents','Unlimited','5',true,true,true,false,false,false,'Included, up to 3 atoms'] },
   { name:'Enterprise', desc:'For organizations that move at scale.',     priceM:null, priceA:null, label:'Custom', cta:'Talk to sales',       featured:false,
-    vals:['All 10 agents','Unlimited','Unlimited',true,true,true,true,true,true,'Up to 10 atoms'] },
+    vals:['All 10 agents','Unlimited','Unlimited',true,true,true,true,true,true,'Advanced, up to 10 atoms'] },
 ];
 
 const PricingSection = ({ onPlanSelect }) => {
@@ -421,7 +422,7 @@ const PricingSection = ({ onPlanSelect }) => {
 // COMING SOON
 // ─────────────────────────────────────────────────────────────────────────────
 const COMING = [
-  { title:'Automation Atom Builder', desc:'Build directly inside the main hub. Paid plans unlock live atoms, branching paths, and deeper customization.', eta:'Preview live', action:'builder' },
+  { title:'Atom Builder', desc:'Advertised on the main platform, unlocked with Pro, and expanded further on Enterprise.', eta:'Pro feature', action:'builder' },
   { title:'Langolf Data Fabric', desc:'Unified event-stream backbone connecting every tool in your stack.', eta:'Q2 2026' },
   { title:'Constellation Marketplace', desc:'Share, remix, and monetize agent templates built by the community.', eta:'Q3 2026' },
   { title:'Orbital Automations', desc:'Event-driven cascading automation chains across all 10 agents.', eta:'Q4 2026' },
@@ -580,9 +581,38 @@ const PlanPage = ({ plan, onBack, onOpenBuilder }) => (
       ))}
       <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginTop:24 }}>
         <PrimaryButton>{plan.name==='Enterprise'?'Request procurement packet':'Continue setup'}</PrimaryButton>
-        <PrimaryButton onClick={() => onOpenBuilder(plan.name)} subtle icon={Workflow}>Jump to Atom Builder in hub</PrimaryButton>
+        <PrimaryButton onClick={() => onOpenBuilder(plan.name)} subtle icon={Workflow}>Open admin QA lab</PrimaryButton>
       </div>
     </div>
+  </PageShell>
+);
+
+const AdminAutomationPage = ({ onBack, initialPlanName = 'Pro' }) => (
+  <PageShell eyebrow="Internal operations" title="Admin automation QA lab." desc="Validate the paid Atom Builder experience as an operator, confirm plan boundaries, and make sure each automation flow works before subscribers rely on it." onBack={onBack} accent={ACCENT} maxWidth={1480}>
+    <div className="page-grid" style={{ display:'grid', gridTemplateColumns:'repeat(3, minmax(0, 1fr))', gap:14, marginBottom:20 }}>
+      {[
+        ['QA target', 'Pro builder access', Workflow],
+        ['What to verify', 'Tests, saves, activations, run history', ShieldCheck],
+        ['Subscription promise', 'Starter locked, Pro unlocked, Enterprise expanded', Crown],
+      ].map(([title, desc, Icon]) => (
+        <div key={title} style={{ padding:20, borderRadius:18, border:`1px solid ${BORD}`, background:SURF }}>
+          <Icon size={18} color={ACCENT}/>
+          <h3 style={{ fontFamily:'Bricolage Grotesque, sans-serif', fontSize:22, color:'#fff', margin:'14px 0 8px' }}>{title}</h3>
+          <p style={{ fontFamily:'Manrope, sans-serif', fontSize:13, color:'rgba(255,255,255,0.56)', lineHeight:1.6, margin:0 }}>{desc}</p>
+        </div>
+      ))}
+    </div>
+    <AutomationAtomBuilder
+      agents={AGENTS}
+      plans={PLANS}
+      initialPlanName={initialPlanName}
+      accent={ACCENT}
+      embedded
+            adminMode
+            fullScreen
+      contextLabel="Admin QA"
+      sectionId="admin-atom-builder"
+    />
   </PageShell>
 );
 
@@ -625,7 +655,6 @@ export default function AscentraPlatform() {
   const [agent, setAgent]     = useState(null);
   const [scrolled, setScrolled] = useState(false);
   const [page, setPage] = useState({ view:'home' });
-  const [builderPlanName, setBuilderPlanName] = useState('Starter');
 
   const pageAgent = AGENTS.find(a => a.id === page.agentId);
   const pagePlan = PLANS.find(p => p.name === page.planName);
@@ -663,26 +692,29 @@ export default function AscentraPlatform() {
     window.scrollTo({ top:0, behavior:'smooth' });
   };
 
-  const focusBuilder = (planName = 'Starter') => {
+  const openAtomBuilderPage = () => {
     setAgent(null);
-    setBuilderPlanName(planName);
-    if (page.view !== 'home') {
-      setPage({ view:'home' });
-      setTimeout(() => document.getElementById('builder-hub')?.scrollIntoView({ behavior:'smooth', block:'start' }), 50);
-      return;
-    }
-    document.getElementById('builder-hub')?.scrollIntoView({ behavior:'smooth', block:'start' });
+    setPage({ view:'atom-builder' });
+    window.scrollTo({ top:0, behavior:'smooth' });
+  };
+
+  const openAdminLab = (planName = 'Pro') => {
+    setAgent(null);
+    setPage({ view:'admin-builder', planName });
+    window.scrollTo({ top:0, behavior:'smooth' });
   };
 
   const renderPage = () => {
     if (page.view === 'start') return <StartPage onBack={goHome} onOpenDocs={() => openDocsPage()} onSelectAgent={openAgentPage}/>;
     if (page.view === 'docs') return <DocsPage onBack={goHome} focusAgent={pageAgent} onSelectAgent={openDocsPage}/>;
     if (page.view === 'agent' && pageAgent) return <AgentWorkspacePage agent={pageAgent} onBack={goHome} onDocs={() => openDocsPage(pageAgent)}/>;
+    if (page.view === 'atom-builder') return <AtomBuilderPage PageShell={PageShell} onBack={goHome} onSeePricing={() => { goHome(); setTimeout(() => document.getElementById('pricing')?.scrollIntoView({ behavior:'smooth' }), 50); }} onOpenAdminLab={() => openAdminLab('Pro')} accent={ACCENT} bord={BORD} surf={SURF}/>;
+    if (page.view === 'admin-builder') return <AdminAutomationPage onBack={goHome} initialPlanName={page.planName || 'Pro'}/>;
     if (page.view === 'demo') return <DemoPage onBack={goHome}/>;
     if (page.view === 'sales') return <ContactPage onBack={goHome}/>;
     if (page.view === 'contact') return <ContactPage onBack={goHome}/>;
     if (page.view === 'legal') return <LegalPage type={page.type} onBack={goHome}/>;
-    if (page.view === 'plan' && pagePlan) return <PlanPage plan={pagePlan} onBack={goHome} onOpenBuilder={focusBuilder}/>;
+    if (page.view === 'plan' && pagePlan) return <PlanPage plan={pagePlan} onBack={goHome} onOpenBuilder={openAdminLab}/>;
     return null;
   };
 
@@ -746,13 +778,16 @@ export default function AscentraPlatform() {
         <nav style={{ display:'flex', gap:22, alignItems:'center' }}>
           {[
             ['Agents', () => jumpTo('agents')],
-            ['Builder', () => focusBuilder('Starter')],
+            ['Atom Builder', openAtomBuilderPage],
             ['Services', () => jumpTo('services')],
             ['Pricing', () => jumpTo('pricing')],
             ['Docs', () => openDocsPage()],
           ].map(([l, action])=>(
             <button key={l} onClick={action} style={{ fontFamily:'Manrope, sans-serif', fontSize:13, color:'rgba(255,255,255,0.58)', background:'transparent', border:'none', padding:0, textDecoration:'none', fontWeight:500, transition:'color 0.18s', cursor:'pointer' }} onMouseEnter={e=>e.currentTarget.style.color='#fff'} onMouseLeave={e=>e.currentTarget.style.color='rgba(255,255,255,0.58)'}>{l}</button>
           ))}
+          <button onClick={() => openAdminLab('Pro')} style={{ fontFamily:'Manrope, sans-serif', fontSize:13, color:'rgba(255,255,255,0.58)', background:'transparent', border:'none', padding:0, textDecoration:'none', fontWeight:500, transition:'color 0.18s', cursor:'pointer' }} onMouseEnter={e=>e.currentTarget.style.color='#fff'} onMouseLeave={e=>e.currentTarget.style.color='rgba(255,255,255,0.58)'}>
+            Admin Lab
+          </button>
           <button onClick={() => setPage({ view:'start' })} style={{ padding:'8px 16px', borderRadius:9, border:'none', background:ACCENT, color:'#000', fontFamily:'Bricolage Grotesque, sans-serif', fontWeight:700, fontSize:13, cursor:'pointer', transition:'all 0.18s', boxShadow:`0 4px 14px rgba(0,201,167,0.28)` }} onMouseEnter={e=>e.currentTarget.style.transform='translateY(-1px)'} onMouseLeave={e=>e.currentTarget.style.transform='translateY(0)'}>
             Start Free
           </button>
@@ -814,25 +849,14 @@ export default function AscentraPlatform() {
               <h3 style={{ fontFamily:'Bricolage Grotesque, sans-serif', fontSize:18, fontWeight:700, margin:'0 0 7px', color:'#fff', letterSpacing:'-0.02em' }}>{s.title}</h3>
               <p style={{ fontFamily:'Manrope, sans-serif', fontSize:13, color:'rgba(255,255,255,0.5)', lineHeight:1.55, margin:'0 0 14px' }}>{s.desc}</p>
               {s.action === 'builder' && (
-                <button onClick={() => focusBuilder('Starter')} style={{ padding:'10px 14px', borderRadius:10, border:'none', background:ACCENT, color:'#000', fontFamily:'Bricolage Grotesque, sans-serif', fontWeight:800, fontSize:12, cursor:'pointer', display:'inline-flex', alignItems:'center', gap:7 }}>
-                  Preview builder <ArrowRight size={13}/>
+                <button onClick={openAtomBuilderPage} style={{ padding:'10px 14px', borderRadius:10, border:'none', background:ACCENT, color:'#000', fontFamily:'Bricolage Grotesque, sans-serif', fontWeight:800, fontSize:12, cursor:'pointer', display:'inline-flex', alignItems:'center', gap:7 }}>
+                  See Atom Builder <ArrowRight size={13}/>
                 </button>
               )}
             </div>
           ))}
         </div>
       </section>
-
-      {/* ── BUILDER HUB ── */}
-      <AutomationAtomBuilder
-        key={`hub-builder-${builderPlanName}`}
-        agents={AGENTS}
-        plans={PLANS}
-        initialPlanName={builderPlanName}
-        accent={ACCENT}
-        embedded
-        sectionId="builder-hub"
-      />
 
       {/* ── PRICING ── */}
       <PricingSection onPlanSelect={openPlanPage}/>
@@ -846,10 +870,10 @@ export default function AscentraPlatform() {
           </h2>
           <p style={{ fontFamily:'Manrope, sans-serif', fontSize:15, color:'rgba(255,255,255,0.52)', margin:'0 0 30px', lineHeight:1.5 }}>No credit card. No install. Just open Ascentra and pick an electron.</p>
           <div style={{ display:'flex', gap:11, justifyContent:'center', flexWrap:'wrap' }}>
-            <button onClick={() => focusBuilder('Starter')} style={{ padding:'13px 26px', borderRadius:11, border:'none', background:ACCENT, color:'#000', fontFamily:'Bricolage Grotesque, sans-serif', fontWeight:700, fontSize:14, cursor:'pointer', boxShadow:`0 10px 32px rgba(0,201,167,0.32)`, display:'flex', alignItems:'center', gap:7, transition:'transform 0.2s' }} onMouseEnter={e=>e.currentTarget.style.transform='translateY(-2px)'} onMouseLeave={e=>e.currentTarget.style.transform='translateY(0)'}>
-              <Play size={14}/> Open Atom Builder in hub
+            <button onClick={() => jumpTo('pricing')} style={{ padding:'13px 26px', borderRadius:11, border:'none', background:ACCENT, color:'#000', fontFamily:'Bricolage Grotesque, sans-serif', fontWeight:700, fontSize:14, cursor:'pointer', boxShadow:`0 10px 32px rgba(0,201,167,0.32)`, display:'flex', alignItems:'center', gap:7, transition:'transform 0.2s' }} onMouseEnter={e=>e.currentTarget.style.transform='translateY(-2px)'} onMouseLeave={e=>e.currentTarget.style.transform='translateY(0)'}>
+              <Play size={14}/> Unlock Atom Builder with Pro
             </button>
-            <button onClick={() => setPage({ view:'demo' })} style={{ padding:'13px 26px', borderRadius:11, border:`1px solid ${BORD}`, background:SURF, color:'#fff', fontFamily:'Bricolage Grotesque, sans-serif', fontWeight:600, fontSize:14, cursor:'pointer' }}>Book a demo</button>
+            <button onClick={() => openAdminLab('Pro')} style={{ padding:'13px 26px', borderRadius:11, border:`1px solid ${BORD}`, background:SURF, color:'#fff', fontFamily:'Bricolage Grotesque, sans-serif', fontWeight:600, fontSize:14, cursor:'pointer' }}>Open admin QA lab</button>
           </div>
         </div>
       </section>

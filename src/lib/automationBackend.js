@@ -150,6 +150,18 @@ export async function listAutomationRunSteps(runId) {
   return data || [];
 }
 
+export async function getAutomationBackendStatus() {
+  assertSupabase();
+  const { data, error } = await supabase.functions.invoke('execute-automation', {
+    body: {
+      mode: 'health',
+    },
+  });
+
+  if (error) throw error;
+  return data;
+}
+
 export async function runAutomationNode({ flowId, node, flowName, flowSummary, planName }) {
   assertSupabase();
   const { data, error } = await supabase.functions.invoke('execute-automation', {

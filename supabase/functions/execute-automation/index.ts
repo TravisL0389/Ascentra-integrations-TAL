@@ -19,6 +19,10 @@ function nodeSupportsMake(node: any) {
   return node && node.type !== 'logic';
 }
 
+function isSuccessfulStepStatus(status: string) {
+  return ['Connected', 'Skipped', 'Logic'].includes(status);
+}
+
 function getExecutionOrder(nodes: any[], edges: any[]) {
   const nodeMap = new Map(nodes.map((node) => [node.id, node]));
   const incoming = new Map(nodes.map((node) => [node.id, 0]));
@@ -85,36 +89,45 @@ async function executeMakeNode(node: any, context: any) {
     };
   }
 
-  const response = await fetch(node.makeConfig.webhookUrl, {
-    method: node.makeConfig.method || 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...headers,
-    },
-    body:
-      (node.makeConfig.method || 'POST') === 'GET'
-        ? undefined
-        : JSON.stringify({
-            flowId: context.flowId,
-            flowName: context.flowName,
-            flowSummary: context.flowSummary,
-            planName: context.planName,
-            nodeId: node.id,
-            nodeType: node.type,
-            nodeTitle: node.title,
-            payload,
-          }),
-  });
+  try {
+    const response = await fetch(node.makeConfig.webhookUrl, {
+      method: node.makeConfig.method || 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...headers,
+      },
+      body:
+        (node.makeConfig.method || 'POST') === 'GET'
+          ? undefined
+          : JSON.stringify({
+              flowId: context.flowId,
+              flowName: context.flowName,
+              flowSummary: context.flowSummary,
+              planName: context.planName,
+              nodeId: node.id,
+              nodeType: node.type,
+              nodeTitle: node.title,
+              payload,
+            }),
+    });
 
-  const text = await response.text();
-  const detail = text.slice(0, 180) || `${response.status} ${response.statusText}`;
+    const text = await response.text();
+    const detail = text.slice(0, 180) || `${response.status} ${response.statusText}`;
 
-  return {
-    nodeId: node.id,
-    nodeTitle: node.title,
-    status: response.ok ? 'Connected' : `HTTP ${response.status}`,
-    detail,
-  };
+    return {
+      nodeId: node.id,
+      nodeTitle: node.title,
+      status: response.ok ? 'Connected' : `HTTP ${response.status}`,
+      detail,
+    };
+  } catch (error) {
+    return {
+      nodeId: node.id,
+      nodeTitle: node.title,
+      status: 'Connection error',
+      detail: error instanceof Error ? error.message : 'Network request failed',
+    };
+  }
 }
 
 Deno.serve(async (request) => {
@@ -131,6 +144,8 @@ Deno.serve(async (request) => {
 
   const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
+  let runId: string | null = null;
+
   try {
     const body = await request.json();
     const mode = body.mode || 'path';
@@ -138,6 +153,15 @@ Deno.serve(async (request) => {
     const flowName = body.flowName || 'Untitled flow';
     const flowSummary = body.flowSummary || '';
     const planName = body.planName || null;
+
+    if (mode === 'health') {
+      return json({
+        ok: true,
+        frontendToEdge: true,
+        serverCredentials: true,
+        timestamp: new Date().toISOString(),
+      });
+    }
 
     const { data: run, error: runError } = await supabase
       .from('automation_runs')
@@ -153,6 +177,7 @@ Deno.serve(async (request) => {
       .single();
 
     if (runError) throw runError;
+    runId = run.id;
 
     const context = { flowId, flowName, flowSummary, planName };
     const steps =
@@ -171,7 +196,11 @@ Deno.serve(async (request) => {
                 });
                 continue;
               }
-              results.push(await executeMakeNode(node, context));
+              const step = await executeMakeNode(node, context);
+              results.push(step);
+              if (!isSuccessfulStepStatus(step.status)) {
+                break;
+              }
             }
             return results;
           })();
@@ -194,14 +223,24 @@ Deno.serve(async (request) => {
         status: failedStep ? 'error' : 'completed',
         finished_at: new Date().toISOString(),
       })
-      .eq('id', run.id);
+      .eq('id', runId);
 
     return json({
-      runId: run.id,
+      runId,
       status: failedStep ? 'error' : 'completed',
       steps,
     });
   } catch (error) {
+    if (runId) {
+      await supabase
+        .from('automation_runs')
+        .update({
+          status: 'error',
+          finished_at: new Date().toISOString(),
+          summary: error instanceof Error ? error.message : 'Execution failed.',
+        })
+        .eq('id', runId);
+    }
     return json({ error: error instanceof Error ? error.message : 'Execution failed.' }, 500);
   }
 });
