@@ -708,7 +708,15 @@ export default function AscentraPlatform() {
     if (page.view === 'start') return <StartPage onBack={goHome} onOpenDocs={() => openDocsPage()} onSelectAgent={openAgentPage}/>;
     if (page.view === 'docs') return <DocsPage onBack={goHome} focusAgent={pageAgent} onSelectAgent={openDocsPage}/>;
     if (page.view === 'agent' && pageAgent) return <AgentWorkspacePage agent={pageAgent} onBack={goHome} onDocs={() => openDocsPage(pageAgent)}/>;
-    if (page.view === 'atom-builder') return <AtomBuilderPage PageShell={PageShell} onBack={goHome} onSeePricing={() => { goHome(); setTimeout(() => document.getElementById('pricing')?.scrollIntoView({ behavior:'smooth' }), 50); }} onOpenAdminLab={() => openAdminLab('Pro')} accent={ACCENT} bord={BORD} surf={SURF}/>;
+    if (page.view === 'atom-builder') {
+      return (
+        <AtomBuilderPage
+          selectedPlan={page.planName || 'Pro'}
+          agents={AGENTS}
+          plans={PLANS}
+        />
+      );
+    }
     if (page.view === 'admin-builder') return <AdminAutomationPage onBack={goHome} initialPlanName={page.planName || 'Pro'}/>;
     if (page.view === 'demo') return <DemoPage onBack={goHome}/>;
     if (page.view === 'sales') return <ContactPage onBack={goHome}/>;

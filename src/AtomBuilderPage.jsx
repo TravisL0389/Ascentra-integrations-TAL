@@ -51,7 +51,11 @@ const textSecondary = 'rgba(230, 236, 248, 0.72)';
 const accent = '#3dd8b2';
 const accentSoft = 'rgba(61, 216, 178, 0.18)';
 
-export default function AtomBuilderPage({ selectedPlan = 'pro' }) {
+export default function AtomBuilderPage({
+  selectedPlan = 'Pro',
+  agents = [],
+  plans = [],
+}) {
   const [railOpen, setRailOpen] = useState(true);
   const [activeTool, setActiveTool] = useState('canvas');
 
@@ -352,10 +356,12 @@ export default function AtomBuilderPage({ selectedPlan = 'pro' }) {
 
           <div style={{ minWidth: 0, minHeight: 0 }}>
             <AutomationAtomBuilder
+              agents={agents}
+              plans={plans}
               embedded
               fullScreen
               contextLabel="Atom Builder"
-              initialPlan={selectedPlan}
+              initialPlanName={selectedPlan}
             />
           </div>
         </main>
