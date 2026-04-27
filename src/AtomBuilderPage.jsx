@@ -1,85 +1,365 @@
-import React from 'react';
-import { Check, CreditCard, Workflow } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import {
+  Bot,
+  ChevronLeft,
+  ChevronRight,
+  Database,
+  Gauge,
+  LayoutGrid,
+  Mail,
+  Play,
+  Search,
+  Settings2,
+  Shield,
+  Sparkles,
+  Workflow,
+} from 'lucide-react';
+import AutomationAtomBuilder from './AutomationAtomBuilder.jsx';
 
-const pageButtonStyle = {
-  padding: '12px 20px',
-  borderRadius: 10,
-  border: 'none',
-  background: '#00C9A7',
-  color: '#000',
-  fontFamily: 'Bricolage Grotesque, sans-serif',
-  fontWeight: 700,
-  fontSize: 13,
-  cursor: 'pointer',
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 8,
-  boxShadow: '0 8px 26px rgba(0,201,167,0.3)',
-};
+const railGroups = [
+  {
+    label: 'Build',
+    items: [
+      { id: 'canvas', name: 'Canvas', detail: 'Drag modules and connect paths', icon: LayoutGrid },
+      { id: 'flows', name: 'Flows', detail: 'Scenario layouts and branches', icon: Workflow },
+      { id: 'launch', name: 'Launch', detail: 'Run checks before publish', icon: Play },
+    ],
+  },
+  {
+    label: 'Atoms',
+    items: [
+      { id: 'pulse', name: 'Pulse', detail: 'Automation & workflows', icon: Sparkles },
+      { id: 'echo', name: 'Echo', detail: 'Email and follow-up delivery', icon: Mail },
+      { id: 'nexus', name: 'Nexus', detail: 'Data syncs and integrations', icon: Database },
+    ],
+  },
+  {
+    label: 'Control',
+    items: [
+      { id: 'insights', name: 'Insights', detail: 'Health, logs, and throughput', icon: Gauge },
+      { id: 'admin', name: 'Admin', detail: 'Permissions and review gates', icon: Shield },
+      { id: 'settings', name: 'Settings', detail: 'Workspace preferences', icon: Settings2 },
+    ],
+  },
+];
 
-const subtleButtonStyle = {
-  ...pageButtonStyle,
-  border: '1px solid rgba(255,255,255,0.08)',
-  background: 'rgba(255,255,255,0.04)',
-  color: '#fff',
-  boxShadow: 'none',
-};
+const surface = 'rgba(9, 13, 24, 0.92)';
+const surfaceStrong = 'rgba(13, 18, 31, 0.96)';
+const border = 'rgba(164, 174, 201, 0.16)';
+const textPrimary = '#f5f7fb';
+const textSecondary = 'rgba(230, 236, 248, 0.72)';
+const accent = '#3dd8b2';
+const accentSoft = 'rgba(61, 216, 178, 0.18)';
 
-export default function AtomBuilderPage({ PageShell, onBack, onSeePricing, onOpenAdminLab, accent = '#00C9A7', bord = 'rgba(255,255,255,0.08)', surf = 'rgba(255,255,255,0.04)' }) {
+export default function AtomBuilderPage({ selectedPlan = 'pro' }) {
+  const [railOpen, setRailOpen] = useState(true);
+  const [activeTool, setActiveTool] = useState('canvas');
+
+  const activeItem = useMemo(
+    () =>
+      railGroups
+        .flatMap((group) => group.items)
+        .find((item) => item.id === activeTool) ?? railGroups[0].items[0],
+    [activeTool],
+  );
+
   return (
-    <PageShell
-      eyebrow="Atom Builder"
-      title="A dedicated page for your paid automation workspace."
-      desc="Atom Builder now lives on its own page instead of inside the home screen. It is positioned as a Pro feature, with Enterprise expanding the graph depth and controls."
-      onBack={onBack}
-      accent={accent}
-      maxWidth={1360}
+    <section
+      data-atom-builder-screen="true"
+      style={{
+        minHeight: '100vh',
+        background:
+          'radial-gradient(circle at top left, rgba(34, 199, 173, 0.08), transparent 24%), radial-gradient(circle at top right, rgba(108, 72, 255, 0.12), transparent 26%), #060913',
+        color: textPrimary,
+      }}
     >
-      <div className="page-grid" style={{ display:'grid', gridTemplateColumns:'1.05fr 0.95fr', gap:18 }}>
-        <div style={{ padding:30, borderRadius:24, border:`1px solid ${bord}`, background:'linear-gradient(150deg, rgba(0,201,167,0.08), rgba(255,255,255,0.03) 45%, rgba(6,10,18,0.92))' }}>
-          <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:10, letterSpacing:'0.28em', color:accent, textTransform:'uppercase', marginBottom:16 }}>Feature page</div>
-          <h2 style={{ fontFamily:'Bricolage Grotesque, sans-serif', fontSize:58, fontWeight:800, lineHeight:0.94, letterSpacing:'-0.04em', margin:'0 0 16px', color:'#fff' }}>
-            Atom Builder is its own destination now.
-          </h2>
-          <p style={{ fontFamily:'Manrope, sans-serif', fontSize:16, color:'rgba(255,255,255,0.58)', lineHeight:1.6, maxWidth:620, margin:'0 0 24px' }}>
-            This page gives Atom Builder a clearer product boundary. The home page can still advertise it, while this route explains the feature, the plan fit, and the internal QA path you use before rollout.
-          </p>
-          <div style={{ display:'grid', gap:12, marginBottom:24 }}>
-            {[
-              'Starter keeps Atom Builder locked so the subscription promise stays clean.',
-              'Pro includes the builder with compact live paths up to 3 atoms.',
-              'Enterprise expands the graph to 10 atoms with deeper approvals and branching.',
-            ].map((item) => (
-              <div key={item} style={{ display:'flex', alignItems:'center', gap:10, color:'rgba(255,255,255,0.82)', fontFamily:'Manrope, sans-serif', fontSize:14 }}>
-                <Check size={14} color={accent} /> {item}
-              </div>
-            ))}
-          </div>
-          <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-            <button onClick={onSeePricing} style={pageButtonStyle}>
-              See Pro pricing <CreditCard size={14}/>
-            </button>
-            <button onClick={onOpenAdminLab} style={subtleButtonStyle}>
-              Open admin QA lab <Workflow size={14}/>
-            </button>
-          </div>
-        </div>
+      <style>{`
+        [data-atom-builder-screen="true"] .builder-layout {
+          grid-template-columns: minmax(0, 1fr) 332px !important;
+          gap: 18px !important;
+        }
+        [data-atom-builder-screen="true"] .builder-layout > :first-child {
+          display: none !important;
+        }
+        [data-atom-builder-screen="true"] .builder-layout > :nth-child(2) {
+          min-width: 0;
+        }
+        [data-atom-builder-screen="true"] .builder-layout > :nth-child(2) > div:first-child {
+          height: calc(100vh - 238px) !important;
+          min-height: 760px !important;
+        }
+        [data-atom-builder-screen="true"] .builder-layout > :nth-child(3) {
+          max-height: calc(100vh - 160px);
+          overflow: auto;
+          padding-right: 4px;
+          scrollbar-width: thin;
+        }
+        @media (max-width: 1180px) {
+          [data-atom-builder-screen="true"] .builder-layout {
+            grid-template-columns: 1fr !important;
+          }
+          [data-atom-builder-screen="true"] .builder-layout > :nth-child(3) {
+            max-height: none;
+            overflow: visible;
+          }
+          [data-atom-builder-screen="true"] .builder-layout > :nth-child(2) > div:first-child {
+            height: 68vh !important;
+            min-height: 640px !important;
+          }
+        }
+      `}</style>
 
-        <div style={{ padding:30, borderRadius:24, border:`1px solid ${bord}`, background:surf }}>
-          <div style={{ display:'grid', gap:14 }}>
-            {[
-              ['What users buy', 'A polished Atom Builder workspace inside the paid product, not a loose preview buried in Starter.'],
-              ['What you verify', 'Node tests, backend saves, run history, path execution, and locked Starter behavior before launch.'],
-              ['Why this page matters', 'Atom Builder has a dedicated destination in the app, so the feature feels intentional instead of being buried in the homepage flow.'],
-            ].map(([title, desc]) => (
-              <div key={title} style={{ padding:'16px 18px', borderRadius:18, border:`1px solid ${bord}`, background:'rgba(255,255,255,0.03)' }}>
-                <div style={{ fontFamily:'Bricolage Grotesque, sans-serif', fontSize:20, fontWeight:700, color:'#fff', marginBottom:8 }}>{title}</div>
-                <div style={{ fontFamily:'Manrope, sans-serif', fontSize:13, lineHeight:1.6, color:'rgba(255,255,255,0.56)' }}>{desc}</div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: railOpen ? '300px minmax(0, 1fr)' : '84px minmax(0, 1fr)',
+          minHeight: '100vh',
+          transition: 'grid-template-columns 180ms ease',
+        }}
+      >
+        <aside
+          style={{
+            borderRight: `1px solid ${border}`,
+            background: railOpen
+              ? 'linear-gradient(180deg, rgba(9, 13, 24, 0.98), rgba(7, 11, 20, 0.98))'
+              : 'linear-gradient(180deg, rgba(9, 13, 24, 0.94), rgba(7, 11, 20, 0.94))',
+            padding: railOpen ? '22px 18px' : '22px 12px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 18,
+            position: 'sticky',
+            top: 0,
+            height: '100vh',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: railOpen ? 'space-between' : 'center',
+              gap: 12,
+            }}
+          >
+            {railOpen ? (
+              <div>
+                <div style={{ fontSize: 12, letterSpacing: '0.28em', textTransform: 'uppercase', color: textSecondary }}>
+                  Atom Builder
+                </div>
+                <div style={{ marginTop: 6, fontSize: 22, fontWeight: 700 }}>Workspace</div>
+              </div>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => setRailOpen((current) => !current)}
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 14,
+                border: `1px solid ${border}`,
+                background: surfaceStrong,
+                color: textPrimary,
+                display: 'grid',
+                placeItems: 'center',
+                cursor: 'pointer',
+                boxShadow: '0 18px 32px rgba(0, 0, 0, 0.22)',
+              }}
+              aria-label={railOpen ? 'Collapse builder toolbar' : 'Expand builder toolbar'}
+            >
+              {railOpen ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: railOpen ? '12px 14px' : '12px 0',
+              borderRadius: 16,
+              border: `1px solid ${border}`,
+              background: surface,
+              justifyContent: railOpen ? 'flex-start' : 'center',
+            }}
+          >
+            <Search size={16} color={textSecondary} />
+            {railOpen ? <span style={{ color: textSecondary, fontSize: 14 }}>Search tools and atoms</span> : null}
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gap: 12,
+              overflowY: 'auto',
+              paddingRight: railOpen ? 4 : 0,
+              scrollbarWidth: 'thin',
+            }}
+          >
+            {railGroups.map((group) => (
+              <div
+                key={group.label}
+                style={{
+                  display: 'grid',
+                  gap: 8,
+                }}
+              >
+                {railOpen ? (
+                  <div style={{ padding: '6px 10px 0', fontSize: 11, letterSpacing: '0.26em', textTransform: 'uppercase', color: textSecondary }}>
+                    {group.label}
+                  </div>
+                ) : null}
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+                  const active = item.id === activeTool;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setActiveTool(item.id)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        width: '100%',
+                        padding: railOpen ? '14px 14px' : '14px 0',
+                        justifyContent: railOpen ? 'flex-start' : 'center',
+                        borderRadius: 18,
+                        border: `1px solid ${active ? 'rgba(61, 216, 178, 0.34)' : border}`,
+                        background: active ? accentSoft : surface,
+                        color: textPrimary,
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        boxShadow: active ? '0 16px 28px rgba(22, 32, 58, 0.3)' : 'none',
+                      }}
+                      title={item.name}
+                    >
+                      <span
+                        style={{
+                          width: 42,
+                          height: 42,
+                          borderRadius: 14,
+                          display: 'grid',
+                          placeItems: 'center',
+                          background: active ? 'rgba(61, 216, 178, 0.18)' : 'rgba(255, 255, 255, 0.04)',
+                          color: active ? accent : textPrimary,
+                          flexShrink: 0,
+                        }}
+                      >
+                        <Icon size={18} />
+                      </span>
+                      {railOpen ? (
+                        <span style={{ display: 'grid', gap: 4 }}>
+                          <span style={{ fontSize: 15, fontWeight: 600 }}>{item.name}</span>
+                          <span style={{ fontSize: 13, color: textSecondary }}>{item.detail}</span>
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
               </div>
             ))}
           </div>
-        </div>
+
+          <div
+            style={{
+              marginTop: 'auto',
+              padding: railOpen ? 18 : 12,
+              borderRadius: 20,
+              border: `1px solid ${border}`,
+              background: 'linear-gradient(180deg, rgba(13, 19, 32, 0.96), rgba(10, 15, 26, 0.96))',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: railOpen ? 'flex-start' : 'center' }}>
+              <span
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 14,
+                  display: 'grid',
+                  placeItems: 'center',
+                  background: 'rgba(61, 216, 178, 0.14)',
+                  color: accent,
+                }}
+              >
+                <Bot size={18} />
+              </span>
+              {railOpen ? (
+                <span style={{ display: 'grid', gap: 4 }}>
+                  <span style={{ fontSize: 15, fontWeight: 600 }}>{activeItem.name}</span>
+                  <span style={{ fontSize: 13, color: textSecondary }}>{activeItem.detail}</span>
+                </span>
+              ) : null}
+            </div>
+          </div>
+        </aside>
+
+        <main
+          style={{
+            minWidth: 0,
+            display: 'grid',
+            gridTemplateRows: 'auto minmax(0, 1fr)',
+          }}
+        >
+          <div
+            style={{
+              padding: '18px 24px 0',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 18,
+                padding: '16px 18px',
+                borderRadius: 22,
+                border: `1px solid ${border}`,
+                background: 'linear-gradient(180deg, rgba(10, 14, 24, 0.94), rgba(8, 12, 22, 0.94))',
+                boxShadow: '0 22px 36px rgba(0, 0, 0, 0.2)',
+              }}
+            >
+              <div style={{ display: 'grid', gap: 6 }}>
+                <div style={{ fontSize: 12, letterSpacing: '0.28em', textTransform: 'uppercase', color: textSecondary }}>
+                  Dedicated Builder View
+                </div>
+                <div style={{ fontSize: 22, fontWeight: 700 }}>Atom Builder takes the stage</div>
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '10px 14px',
+                  borderRadius: 16,
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  border: `1px solid ${border}`,
+                  color: textSecondary,
+                  fontSize: 14,
+                }}
+              >
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: 999,
+                    background: accent,
+                    boxShadow: '0 0 0 6px rgba(61, 216, 178, 0.12)',
+                  }}
+                />
+                Pro workspace active
+              </div>
+            </div>
+          </div>
+
+          <div style={{ minWidth: 0, minHeight: 0 }}>
+            <AutomationAtomBuilder
+              embedded
+              fullScreen
+              contextLabel="Atom Builder"
+              initialPlan={selectedPlan}
+            />
+          </div>
+        </main>
       </div>
-    </PageShell>
+    </section>
   );
 }
