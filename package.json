@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
@@ -11,11 +14,11 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",
     "@vitejs/plugin-react": "^5.0.4",
-    "vite": "^7.1.7",
-    "typescript": "^5.9.2",
+    "lucide-react": "^0.468.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "lucide-react": "^0.468.0"
+    "typescript": "^5.9.2",
+    "vite": "^7.1.7"
   },
   "devDependencies": {}
 }
