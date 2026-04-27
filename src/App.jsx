@@ -3,13 +3,14 @@ import { X, Check, ArrowRight, Sparkles, Code2, Workflow, MessageSquare,
          Brain, Network, BarChart3, ShieldCheck, BookMarked, Clock,
          Play, ChevronDown, Minus, ArrowLeft, CalendarDays, CreditCard,
          FileText, Mail, Rocket, Search, TerminalSquare, Users } from 'lucide-react';
+import AutomationAtomBuilder from './AutomationAtomBuilder.jsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DESIGN TOKENS
 // ─────────────────────────────────────────────────────────────────────────────
-const BG     = '#070d16';
-const SURF   = 'rgba(255,255,255,0.035)';
-const BORD   = 'rgba(255,255,255,0.07)';
+const BG     = '#0b0d12';
+const SURF   = 'rgba(255,255,255,0.04)';
+const BORD   = 'rgba(255,255,255,0.08)';
 const ACCENT = '#00C9A7';
 
 function shadeColor(hex, pct) {
@@ -58,9 +59,9 @@ const AGENTS = [
 
 // Three atom-style elliptical orbits at 0°, +60°, -60° rotations
 const ORBITS = [
-  { radius:200, duration:18, tiltX:72, tiltZ:0,   ring:'rgba(180,160,255,0.30)', rGlow:'rgba(160,130,255,0.12)' },
-  { radius:275, duration:26, tiltX:72, tiltZ:60,  ring:'rgba(255,160,210,0.26)', rGlow:'rgba(220,100,180,0.10)' },
-  { radius:350, duration:35, tiltX:72, tiltZ:-60, ring:'rgba(140,180,255,0.26)', rGlow:'rgba(100,150,240,0.10)' },
+  { radius:200, duration:18, tiltX:72, tiltZ:0,   ring:'rgba(226,232,240,0.18)', rGlow:'rgba(148,163,184,0.10)' },
+  { radius:275, duration:26, tiltX:72, tiltZ:60,  ring:'rgba(196,181,253,0.18)', rGlow:'rgba(129,140,248,0.08)' },
+  { radius:350, duration:35, tiltX:72, tiltZ:-60, ring:'rgba(148,163,184,0.18)', rGlow:'rgba(100,116,139,0.08)' },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -185,13 +186,9 @@ const OrbitalSystem = ({ onAgentClick }) => {
   const [cHov, setCHov] = useState(false);
   return (
     <div style={{ position:'relative', width:'100%', height:740, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', perspective:'1600px' }}>
-      {/* Clean dark navy background — NO stars */}
-      <div style={{ position:'absolute', inset:0, background:`radial-gradient(ellipse 80% 70% at 50% 50%, #0d1b2e, ${BG} 72%)` }}/>
-      {/* Subtle dot grid */}
-      <div style={{ position:'absolute', inset:0, backgroundImage:'radial-gradient(circle, rgba(255,255,255,0.05) 1px, transparent 1px)', backgroundSize:'34px 34px', opacity:0.6 }}/>
-      {/* Ambient color blobs */}
-      <div style={{ position:'absolute', top:'22%', left:'14%', width:300, height:300, borderRadius:'50%', background:'radial-gradient(circle, rgba(0,201,167,0.07), transparent 70%)', filter:'blur(44px)', pointerEvents:'none' }}/>
-      <div style={{ position:'absolute', bottom:'18%', right:'10%', width:260, height:260, borderRadius:'50%', background:'radial-gradient(circle, rgba(139,92,246,0.06), transparent 70%)', filter:'blur(44px)', pointerEvents:'none' }}/>
+      <div style={{ position:'absolute', inset:0, background:`linear-gradient(180deg, rgba(255,255,255,0.04), transparent 18%), linear-gradient(132deg, rgba(255,255,255,0.06) 0 15%, transparent 15% 72%, rgba(0,201,167,0.08) 72% 100%), linear-gradient(180deg, #151920, ${BG} 82%)` }}/>
+      <div style={{ position:'absolute', inset:0, backgroundImage:'linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)', backgroundSize:'34px 34px', opacity:0.26 }}/>
+      <div style={{ position:'absolute', inset:'8% 6%', borderRadius:34, border:'1px solid rgba(255,255,255,0.05)', background:'linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.008))', boxShadow:'inset 0 1px 0 rgba(255,255,255,0.04)' }}/>
 
       {/* 3-D scene */}
       <div style={{ position:'absolute', inset:0, transformStyle:'preserve-3d' }}>
@@ -300,14 +297,14 @@ const AgentCard = ({ agent, onClick, index }) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // PRICING  (RTF spec: Starter / Pro / Enterprise)
 // ─────────────────────────────────────────────────────────────────────────────
-const FEAT_LABELS = ['Agents active','Tasks / month','Workspaces','Team sharing','Priority queue','API access','SSO & audit logs','Custom agents','SLA guarantee'];
+const FEAT_LABELS = ['Agents active','Tasks / month','Workspaces','Team sharing','Priority queue','API access','SSO & audit logs','Custom agents','SLA guarantee','Atom Builder access'];
 const PLANS = [
   { name:'Starter',    desc:'For individuals exploring AI agents.',     priceM:0,    priceA:0,    label:'Free',   cta:'Get started free',    featured:false,
-    vals:['2 agents','50 / month','1',false,false,false,false,false,false] },
+    vals:['2 agents','50 / month','1',false,false,false,false,false,false,'Preview only'] },
   { name:'Pro',        desc:'For ambitious teams doing real work.',      priceM:29,   priceA:23,   label:null,     cta:'Start 14-day trial',  featured:true,
-    vals:['All 10 agents','Unlimited','5',true,true,true,false,false,false] },
+    vals:['All 10 agents','Unlimited','5',true,true,true,false,false,false,'Up to 3 atoms'] },
   { name:'Enterprise', desc:'For organizations that move at scale.',     priceM:null, priceA:null, label:'Custom', cta:'Talk to sales',       featured:false,
-    vals:['All 10 agents','Unlimited','Unlimited',true,true,true,true,true,true] },
+    vals:['All 10 agents','Unlimited','Unlimited',true,true,true,true,true,true,'Up to 10 atoms'] },
 ];
 
 const PricingSection = ({ onPlanSelect }) => {
@@ -424,8 +421,8 @@ const PricingSection = ({ onPlanSelect }) => {
 // COMING SOON
 // ─────────────────────────────────────────────────────────────────────────────
 const COMING = [
+  { title:'Automation Atom Builder', desc:'Build directly inside the main hub. Paid plans unlock live atoms, branching paths, and deeper customization.', eta:'Preview live', action:'builder' },
   { title:'Langolf Data Fabric', desc:'Unified event-stream backbone connecting every tool in your stack.', eta:'Q2 2026' },
-  { title:'Flow Studio', desc:'Visual no-code canvas to wire agents and integrations by hand.', eta:'Q3 2026' },
   { title:'Constellation Marketplace', desc:'Share, remix, and monetize agent templates built by the community.', eta:'Q3 2026' },
   { title:'Orbital Automations', desc:'Event-driven cascading automation chains across all 10 agents.', eta:'Q4 2026' },
 ];
@@ -444,11 +441,11 @@ const WORKFLOW_STEPS = [
   'Approve, schedule, or hand off',
 ];
 
-const PageShell = ({ eyebrow, title, desc, children, onBack, accent = ACCENT }) => (
+const PageShell = ({ eyebrow, title, desc, children, onBack, accent = ACCENT, maxWidth = 1160 }) => (
   <main style={{ minHeight:'100vh', padding:'126px 40px 72px', position:'relative', overflow:'hidden' }}>
-    <div style={{ position:'absolute', inset:0, background:`radial-gradient(circle at 18% 12%, ${accent}18, transparent 34%), radial-gradient(circle at 82% 20%, rgba(139,92,246,0.12), transparent 32%), ${BG}` }}/>
-    <div style={{ position:'absolute', inset:0, backgroundImage:'radial-gradient(circle, rgba(255,255,255,0.045) 1px, transparent 1px)', backgroundSize:'34px 34px', opacity:0.55 }}/>
-    <div style={{ position:'relative', maxWidth:1160, margin:'0 auto' }}>
+    <div style={{ position:'absolute', inset:0, background:`linear-gradient(180deg, rgba(255,255,255,0.04), transparent 22%), linear-gradient(126deg, rgba(255,255,255,0.05) 0 16%, transparent 16% 68%, ${accent}12 68% 100%), linear-gradient(180deg, #13161d, ${BG} 78%)` }}/>
+    <div style={{ position:'absolute', inset:0, backgroundImage:'linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)', backgroundSize:'36px 36px', opacity:0.22 }}/>
+    <div style={{ position:'relative', maxWidth, margin:'0 auto' }}>
       <button onClick={onBack} style={{ display:'inline-flex', alignItems:'center', gap:7, padding:'9px 14px', marginBottom:34, borderRadius:10, border:`1px solid ${BORD}`, background:SURF, color:'rgba(255,255,255,0.72)', fontFamily:'Bricolage Grotesque, sans-serif', fontWeight:700, fontSize:13, cursor:'pointer' }}>
         <ArrowLeft size={14}/> Back to platform
       </button>
@@ -571,7 +568,7 @@ const DemoPage = ({ onBack }) => (
   </PageShell>
 );
 
-const PlanPage = ({ plan, onBack }) => (
+const PlanPage = ({ plan, onBack, onOpenBuilder }) => (
   <PageShell eyebrow="Plan selected" title={`${plan.name} checkout.`} desc={`${plan.desc} Review included capacity and confirm the workspace path before billing is connected.`} onBack={onBack}>
     <div style={{ maxWidth:760, padding:28, borderRadius:18, border:`1px solid ${plan.featured?ACCENT+'55':BORD}`, background:plan.featured?'linear-gradient(150deg, rgba(0,201,167,0.1), rgba(255,255,255,0.035))':SURF }}>
       <CreditCard size={20} color={ACCENT}/>
@@ -581,7 +578,10 @@ const PlanPage = ({ plan, onBack }) => (
           <Check size={14} color={ACCENT}/>{typeof v==='string'?`${FEAT_LABELS[i]}: ${v}`:FEAT_LABELS[i]}
         </div>
       ))}
-      <div style={{ marginTop:24 }}><PrimaryButton>{plan.name==='Enterprise'?'Request procurement packet':'Continue setup'}</PrimaryButton></div>
+      <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginTop:24 }}>
+        <PrimaryButton>{plan.name==='Enterprise'?'Request procurement packet':'Continue setup'}</PrimaryButton>
+        <PrimaryButton onClick={() => onOpenBuilder(plan.name)} subtle icon={Workflow}>Jump to Atom Builder in hub</PrimaryButton>
+      </div>
     </div>
   </PageShell>
 );
@@ -625,6 +625,7 @@ export default function AscentraPlatform() {
   const [agent, setAgent]     = useState(null);
   const [scrolled, setScrolled] = useState(false);
   const [page, setPage] = useState({ view:'home' });
+  const [builderPlanName, setBuilderPlanName] = useState('Starter');
 
   const pageAgent = AGENTS.find(a => a.id === page.agentId);
   const pagePlan = PLANS.find(p => p.name === page.planName);
@@ -662,6 +663,17 @@ export default function AscentraPlatform() {
     window.scrollTo({ top:0, behavior:'smooth' });
   };
 
+  const focusBuilder = (planName = 'Starter') => {
+    setAgent(null);
+    setBuilderPlanName(planName);
+    if (page.view !== 'home') {
+      setPage({ view:'home' });
+      setTimeout(() => document.getElementById('builder-hub')?.scrollIntoView({ behavior:'smooth', block:'start' }), 50);
+      return;
+    }
+    document.getElementById('builder-hub')?.scrollIntoView({ behavior:'smooth', block:'start' });
+  };
+
   const renderPage = () => {
     if (page.view === 'start') return <StartPage onBack={goHome} onOpenDocs={() => openDocsPage()} onSelectAgent={openAgentPage}/>;
     if (page.view === 'docs') return <DocsPage onBack={goHome} focusAgent={pageAgent} onSelectAgent={openDocsPage}/>;
@@ -670,7 +682,7 @@ export default function AscentraPlatform() {
     if (page.view === 'sales') return <ContactPage onBack={goHome}/>;
     if (page.view === 'contact') return <ContactPage onBack={goHome}/>;
     if (page.view === 'legal') return <LegalPage type={page.type} onBack={goHome}/>;
-    if (page.view === 'plan' && pagePlan) return <PlanPage plan={pagePlan} onBack={goHome}/>;
+    if (page.view === 'plan' && pagePlan) return <PlanPage plan={pagePlan} onBack={goHome} onOpenBuilder={focusBuilder}/>;
     return null;
   };
 
@@ -708,6 +720,8 @@ export default function AscentraPlatform() {
           .agent-grid {grid-template-columns:1fr!important}
           .plan-grid  {grid-template-columns:1fr!important}
           .page-grid  {grid-template-columns:1fr!important}
+          .builder-layout{grid-template-columns:1fr!important}
+          .builder-actions{grid-template-columns:1fr!important}
           .hero-h1    {font-size:52px!important;letter-spacing:-0.03em!important}
           main h1     {font-size:46px!important}
         }
@@ -716,7 +730,7 @@ export default function AscentraPlatform() {
       `}</style>
 
       {/* ── HEADER ── */}
-      <header style={{ position:'fixed', top:0, left:0, right:0, zIndex:50, padding:scrolled?'11px 40px':'19px 40px', background:scrolled?'rgba(7,13,22,0.85)':'transparent', backdropFilter:scrolled?'blur(16px)':'none', borderBottom:scrolled?`1px solid ${BORD}`:'1px solid transparent', transition:'all 0.28s ease', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+      <header style={{ position:'fixed', top:0, left:0, right:0, zIndex:50, padding:scrolled?'11px 40px':'19px 40px', background:scrolled?'rgba(12,14,19,0.84)':'rgba(12,14,19,0.44)', backdropFilter:'blur(18px)', borderBottom:scrolled?`1px solid ${BORD}`:'1px solid rgba(255,255,255,0.03)', transition:'all 0.28s ease', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
         <div style={{ display:'flex', alignItems:'center', gap:11 }}>
           {/* Mini atom logo */}
           <div style={{ position:'relative', width:30, height:30, flexShrink:0 }}>
@@ -732,6 +746,7 @@ export default function AscentraPlatform() {
         <nav style={{ display:'flex', gap:22, alignItems:'center' }}>
           {[
             ['Agents', () => jumpTo('agents')],
+            ['Builder', () => focusBuilder('Starter')],
             ['Services', () => jumpTo('services')],
             ['Pricing', () => jumpTo('pricing')],
             ['Docs', () => openDocsPage()],
@@ -748,8 +763,9 @@ export default function AscentraPlatform() {
       <>
       {/* ── HERO ── */}
       <section style={{ position:'relative', paddingTop:96, paddingBottom:0 }}>
+        <div style={{ position:'absolute', inset:0, background:'linear-gradient(180deg, rgba(255,255,255,0.02), transparent 30%)', pointerEvents:'none' }}/>
         <div style={{ maxWidth:1060, margin:'0 auto', padding:'0 40px', textAlign:'center' }}>
-          <div style={{ display:'inline-flex', alignItems:'center', gap:7, padding:'4px 12px', borderRadius:999, background:'rgba(0,201,167,0.07)', border:`1px solid rgba(0,201,167,0.18)`, fontFamily:'JetBrains Mono, monospace', fontSize:10, letterSpacing:'0.25em', color:ACCENT, textTransform:'uppercase', marginBottom:22 }}>
+          <div style={{ display:'inline-flex', alignItems:'center', gap:7, padding:'4px 12px', borderRadius:999, background:'rgba(255,255,255,0.045)', border:`1px solid rgba(255,255,255,0.08)`, fontFamily:'JetBrains Mono, monospace', fontSize:10, letterSpacing:'0.25em', color:ACCENT, textTransform:'uppercase', marginBottom:22 }}>
             <span style={{ width:5, height:5, borderRadius:'50%', background:ACCENT, boxShadow:`0 0 7px ${ACCENT}` }}/>10 agents online
           </div>
           <h1 className="hero-h1" style={{ fontFamily:'Bricolage Grotesque, sans-serif', fontSize:84, fontWeight:800, lineHeight:0.94, letterSpacing:'-0.045em', margin:'0 0 20px', background:'linear-gradient(150deg, #fff 30%, #99f6e4 52%, #d8d4ff 78%, #fff 100%)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>
@@ -796,26 +812,42 @@ export default function AscentraPlatform() {
                 <span style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, letterSpacing:'0.18em', color:'#FBBF24', background:'rgba(251,191,36,0.07)', border:'1px solid rgba(251,191,36,0.22)', padding:'3px 8px', borderRadius:999, textTransform:'uppercase' }}>{s.eta}</span>
               </div>
               <h3 style={{ fontFamily:'Bricolage Grotesque, sans-serif', fontSize:18, fontWeight:700, margin:'0 0 7px', color:'#fff', letterSpacing:'-0.02em' }}>{s.title}</h3>
-              <p style={{ fontFamily:'Manrope, sans-serif', fontSize:13, color:'rgba(255,255,255,0.5)', lineHeight:1.55, margin:0 }}>{s.desc}</p>
+              <p style={{ fontFamily:'Manrope, sans-serif', fontSize:13, color:'rgba(255,255,255,0.5)', lineHeight:1.55, margin:'0 0 14px' }}>{s.desc}</p>
+              {s.action === 'builder' && (
+                <button onClick={() => focusBuilder('Starter')} style={{ padding:'10px 14px', borderRadius:10, border:'none', background:ACCENT, color:'#000', fontFamily:'Bricolage Grotesque, sans-serif', fontWeight:800, fontSize:12, cursor:'pointer', display:'inline-flex', alignItems:'center', gap:7 }}>
+                  Preview builder <ArrowRight size={13}/>
+                </button>
+              )}
             </div>
           ))}
         </div>
       </section>
+
+      {/* ── BUILDER HUB ── */}
+      <AutomationAtomBuilder
+        key={`hub-builder-${builderPlanName}`}
+        agents={AGENTS}
+        plans={PLANS}
+        initialPlanName={builderPlanName}
+        accent={ACCENT}
+        embedded
+        sectionId="builder-hub"
+      />
 
       {/* ── PRICING ── */}
       <PricingSection onPlanSelect={openPlanPage}/>
 
       {/* ── CTA ── */}
       <section style={{ position:'relative', padding:'68px 40px', textAlign:'center', overflow:'hidden' }}>
-        <div style={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)', width:440, height:440, borderRadius:'50%', background:`radial-gradient(circle, rgba(0,201,167,0.09), transparent 65%)`, pointerEvents:'none' }}/>
+        <div style={{ position:'absolute', inset:0, background:'linear-gradient(126deg, rgba(255,255,255,0.04) 0 14%, transparent 14% 78%, rgba(0,201,167,0.08) 78% 100%)', pointerEvents:'none' }}/>
         <div style={{ position:'relative', maxWidth:580, margin:'0 auto' }}>
           <h2 style={{ fontFamily:'Bricolage Grotesque, sans-serif', fontSize:52, fontWeight:800, margin:'0 0 16px', letterSpacing:'-0.04em', lineHeight:0.95, background:`linear-gradient(135deg, #fff, #99f6e4)`, WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>
             Launch your first agent in 90 seconds.
           </h2>
           <p style={{ fontFamily:'Manrope, sans-serif', fontSize:15, color:'rgba(255,255,255,0.52)', margin:'0 0 30px', lineHeight:1.5 }}>No credit card. No install. Just open Ascentra and pick an electron.</p>
           <div style={{ display:'flex', gap:11, justifyContent:'center', flexWrap:'wrap' }}>
-            <button onClick={() => setPage({ view:'start' })} style={{ padding:'13px 26px', borderRadius:11, border:'none', background:ACCENT, color:'#000', fontFamily:'Bricolage Grotesque, sans-serif', fontWeight:700, fontSize:14, cursor:'pointer', boxShadow:`0 10px 32px rgba(0,201,167,0.32)`, display:'flex', alignItems:'center', gap:7, transition:'transform 0.2s' }} onMouseEnter={e=>e.currentTarget.style.transform='translateY(-2px)'} onMouseLeave={e=>e.currentTarget.style.transform='translateY(0)'}>
-              <Play size={14}/> Start building
+            <button onClick={() => focusBuilder('Starter')} style={{ padding:'13px 26px', borderRadius:11, border:'none', background:ACCENT, color:'#000', fontFamily:'Bricolage Grotesque, sans-serif', fontWeight:700, fontSize:14, cursor:'pointer', boxShadow:`0 10px 32px rgba(0,201,167,0.32)`, display:'flex', alignItems:'center', gap:7, transition:'transform 0.2s' }} onMouseEnter={e=>e.currentTarget.style.transform='translateY(-2px)'} onMouseLeave={e=>e.currentTarget.style.transform='translateY(0)'}>
+              <Play size={14}/> Open Atom Builder in hub
             </button>
             <button onClick={() => setPage({ view:'demo' })} style={{ padding:'13px 26px', borderRadius:11, border:`1px solid ${BORD}`, background:SURF, color:'#fff', fontFamily:'Bricolage Grotesque, sans-serif', fontWeight:600, fontSize:14, cursor:'pointer' }}>Book a demo</button>
           </div>
@@ -825,7 +857,7 @@ export default function AscentraPlatform() {
       )}
 
       {/* ── FOOTER ── */}
-      <footer style={{ padding:'28px 40px', borderTop:`1px solid ${BORD}`, background:'rgba(0,0,0,0.22)', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:14 }}>
+      <footer style={{ padding:'28px 40px', borderTop:`1px solid ${BORD}`, background:'rgba(255,255,255,0.025)', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:14 }}>
         <div style={{ display:'flex', alignItems:'center', gap:9 }}>
           <div style={{ width:20, height:20, borderRadius:'50%', background:`radial-gradient(circle, #d4f8ef, ${ACCENT})`, boxShadow:`0 0 7px rgba(0,201,167,0.36)` }}/>
           <div>
