@@ -2,7 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-ascentra-client',
 };
 
 function json(data: unknown, status = 200) {
@@ -144,6 +144,12 @@ Deno.serve(async (request) => {
 
   const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
+  const authorization = request.headers.get('Authorization') || '';
+  const token = authorization.replace(/^Bearer\s+/i, '').trim();
+  if (!token) return json({ error: 'Authentication required.' }, 401);
+  const { data: authData, error: authError } = await supabase.auth.getUser(token);
+  if (authError || !authData.user) return json({ error: 'Invalid authentication token.' }, 401);
+
   let runId: string | null = null;
 
   try {
@@ -162,6 +168,23 @@ Deno.serve(async (request) => {
         timestamp: new Date().toISOString(),
       });
     }
+
+    if (!flowId) return json({ error: 'A saved flow is required.' }, 400);
+
+    const { data: authorizedFlow, error: flowError } = await supabase
+      .from('automation_flows')
+      .select('organization_id')
+      .eq('id', flowId)
+      .single();
+    if (flowError || !authorizedFlow?.organization_id) return json({ error: 'Flow not found.' }, 404);
+
+    const { data: membership, error: membershipError } = await supabase
+      .from('organization_memberships')
+      .select('id')
+      .eq('organization_id', authorizedFlow.organization_id)
+      .eq('user_id', authData.user.id)
+      .maybeSingle();
+    if (membershipError || !membership) return json({ error: 'You do not have access to this flow.' }, 403);
 
     const { data: run, error: runError } = await supabase
       .from('automation_runs')

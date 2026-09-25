@@ -1,10 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { Suspense, lazy, useState, useEffect } from 'react';
 import { X, Check, ArrowRight, Sparkles, Code2, Workflow, MessageSquare,
          Brain, Network, BarChart3, ShieldCheck, BookMarked, Clock,
          Play, ChevronDown, Minus, ArrowLeft, CalendarDays, CreditCard,
          FileText, Mail, Rocket, Search, TerminalSquare, Users, Crown } from 'lucide-react';
-import AutomationAtomBuilder from './AutomationAtomBuilder.jsx';
-import AtomBuilderPage from './AtomBuilderPage.jsx';
+import WorkspaceControlPanel from './WorkspaceControlPanel.jsx';
+import { useWorkspaceAccount } from './lib/workspaceAccount.js';
+
+const AutomationAtomBuilder = lazy(() => import('./AutomationAtomBuilder.jsx'));
+const AtomBuilderPage = lazy(() => import('./AtomBuilderPage.jsx'));
+const ThreeOrbitalHero = lazy(() => import('./ThreeOrbitalHero.jsx'));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DESIGN TOKENS
@@ -13,6 +17,12 @@ const BG     = '#0b0d12';
 const SURF   = 'rgba(255,255,255,0.04)';
 const BORD   = 'rgba(255,255,255,0.08)';
 const ACCENT = '#00C9A7';
+
+const SurfaceLoader = ({ label = 'Loading workspace…', minHeight = 240 }) => (
+  <div role="status" style={{ minHeight, display:'grid', placeItems:'center', color:'rgba(255,255,255,0.56)', fontFamily:'Manrope, sans-serif', fontSize:13 }}>
+    {label}
+  </div>
+);
 
 function shadeColor(hex, pct) {
   const n = parseInt(hex.slice(1), 16), a = Math.round(2.55 * pct);
@@ -184,29 +194,7 @@ const AgentOrb = ({ agent, onClick }) => {
 // ORBITAL SYSTEM
 // ─────────────────────────────────────────────────────────────────────────────
 const OrbitalSystem = ({ onAgentClick }) => {
-  const [cHov, setCHov] = useState(false);
-  return (
-    <div style={{ position:'relative', width:'100%', height:740, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', perspective:'1600px' }}>
-      <div style={{ position:'absolute', inset:0, background:`linear-gradient(180deg, rgba(255,255,255,0.04), transparent 18%), linear-gradient(132deg, rgba(255,255,255,0.06) 0 15%, transparent 15% 72%, rgba(0,201,167,0.08) 72% 100%), linear-gradient(180deg, #151920, ${BG} 82%)` }}/>
-      <div style={{ position:'absolute', inset:0, backgroundImage:'linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)', backgroundSize:'34px 34px', opacity:0.26 }}/>
-      <div style={{ position:'absolute', inset:'8% 6%', borderRadius:34, border:'1px solid rgba(255,255,255,0.05)', background:'linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.008))', boxShadow:'inset 0 1px 0 rgba(255,255,255,0.04)' }}/>
-
-      {/* 3-D scene */}
-      <div style={{ position:'absolute', inset:0, transformStyle:'preserve-3d' }}>
-        {/* Three tilted atom orbit rings */}
-        {ORBITS.map((o, i) => (
-          <div key={i} style={{ position:'absolute', top:'50%', left:'50%', width:o.radius*2, height:o.radius*2, marginTop:-o.radius, marginLeft:-o.radius, transform:`rotateX(${o.tiltX}deg) rotateZ(${o.tiltZ}deg)`, transformStyle:'preserve-3d', pointerEvents:'none' }}>
-            {/* Glow echo */}
-            <div style={{ position:'absolute', inset:-2, borderRadius:'50%', border:`2px solid ${o.rGlow}`, filter:'blur(5px)' }}/>
-            {/* Crisp ring */}
-            <div style={{ position:'absolute', inset:0, borderRadius:'50%', border:`1px solid ${o.ring}` }}/>
-          </div>
-        ))}
-        <Nucleus hovered={cHov} setHovered={setCHov}/>
-        {AGENTS.map(a => <AgentOrb key={a.id} agent={a} onClick={onAgentClick}/>)}
-      </div>
-    </div>
-  );
+  return <Suspense fallback={<SurfaceLoader label="Loading agent constellation…" minHeight={520} />}><ThreeOrbitalHero agents={AGENTS} onAgentClick={onAgentClick} /></Suspense>;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -466,7 +454,7 @@ const PrimaryButton = ({ children, onClick, icon:Icon = ArrowRight, subtle = fal
   </button>
 );
 
-const StartPage = ({ onBack, onOpenDocs, onSelectAgent }) => (
+const StartPage = ({ onBack, onOpenDocs, onSelectAgent, workspaceAccount }) => (
   <PageShell eyebrow="Workspace setup" title="Start your first Ascentra workspace." desc="Pick a plan, invite the team later, and launch with a guided first task instead of a blank canvas." onBack={onBack}>
     <div className="page-grid" style={{ display:'grid', gridTemplateColumns:'1.05fr 0.95fr', gap:18 }}>
       <div style={{ padding:28, borderRadius:18, border:`1px solid ${BORD}`, background:'rgba(255,255,255,0.04)' }}>
@@ -484,24 +472,14 @@ const StartPage = ({ onBack, onOpenDocs, onSelectAgent }) => (
           <PrimaryButton onClick={onOpenDocs} subtle icon={FileText}>Read setup docs</PrimaryButton>
         </div>
       </div>
-      <div style={{ padding:28, borderRadius:18, border:`1px solid rgba(0,201,167,0.25)`, background:'linear-gradient(150deg, rgba(0,201,167,0.11), rgba(255,255,255,0.035))' }}>
-        <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:10, letterSpacing:'0.22em', color:'rgba(255,255,255,0.38)', textTransform:'uppercase', marginBottom:18 }}>Recommended starter stack</div>
-        {['Forge for app buildout','Nexus for integrations','Pulse for repeatable workflows'].map((item, i)=>(
-          <div key={item} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14, color:'rgba(255,255,255,0.8)', fontFamily:'Manrope, sans-serif', fontSize:14 }}>
-            <Check size={15} color={ACCENT}/>{item}
-          </div>
-        ))}
-        <div style={{ marginTop:30, paddingTop:22, borderTop:`1px solid ${BORD}` }}>
-          <div style={{ fontFamily:'Bricolage Grotesque, sans-serif', fontSize:42, fontWeight:800, letterSpacing:'-0.04em' }}>$0</div>
-          <div style={{ fontFamily:'Manrope, sans-serif', fontSize:13, color:'rgba(255,255,255,0.48)' }}>Starter workspace, 50 tasks per month</div>
-        </div>
-      </div>
+      <WorkspaceControlPanel account={workspaceAccount} />
     </div>
   </PageShell>
 );
 
-const AgentWorkspacePage = ({ agent, onBack, onDocs }) => {
+const AgentWorkspacePage = ({ agent, onBack, onDocs, onOpenBuilder }) => {
   const { Icon } = agent;
+  const [selectedPrompt, setSelectedPrompt] = useState(agent.prompts[0] || '');
   return (
     <PageShell eyebrow={`${agent.name} workspace`} title={`Activate ${agent.name}.`} desc={`${agent.specialty} flows, prompts, and run history are ready for the first production task.`} onBack={onBack} accent={agent.color}>
       <div className="page-grid" style={{ display:'grid', gridTemplateColumns:'0.9fr 1.1fr', gap:18 }}>
@@ -514,12 +492,18 @@ const AgentWorkspacePage = ({ agent, onBack, onDocs }) => {
         <div style={{ padding:28, borderRadius:18, border:`1px solid ${BORD}`, background:SURF }}>
           <h3 style={{ fontFamily:'Bricolage Grotesque, sans-serif', fontSize:24, margin:'0 0 18px', color:'#fff' }}>Ready prompts</h3>
           {agent.prompts.map((prompt, i)=>(
-            <button key={prompt} style={{ width:'100%', textAlign:'left', padding:'14px 16px', marginBottom:10, borderRadius:10, border:`1px solid ${agent.color}24`, background:`${agent.color}08`, color:'rgba(255,255,255,0.82)', fontFamily:'Manrope, sans-serif', fontSize:13, cursor:'pointer' }}>
+            <button
+              key={prompt}
+              type="button"
+              onClick={() => setSelectedPrompt(prompt)}
+              aria-pressed={selectedPrompt === prompt}
+              style={{ width:'100%', textAlign:'left', padding:'14px 16px', marginBottom:10, borderRadius:10, border:`1px solid ${selectedPrompt === prompt ? `${agent.color}88` : `${agent.color}24`}`, background:selectedPrompt === prompt ? `${agent.color}16` : `${agent.color}08`, color:'rgba(255,255,255,0.82)', fontFamily:'Manrope, sans-serif', fontSize:13, cursor:'pointer' }}
+            >
               {prompt}
             </button>
           ))}
           <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginTop:18 }}>
-            <PrimaryButton>Run selected prompt</PrimaryButton>
+            <PrimaryButton onClick={onOpenBuilder} icon={Workflow}>Use in Atom Builder</PrimaryButton>
             <PrimaryButton onClick={onDocs} subtle icon={FileText}>Agent docs</PrimaryButton>
           </div>
         </div>
@@ -569,7 +553,7 @@ const DemoPage = ({ onBack }) => (
   </PageShell>
 );
 
-const PlanPage = ({ plan, onBack, onOpenBuilder }) => (
+const PlanPage = ({ plan, onBack, onOpenBuilder, workspaceAccount }) => (
   <PageShell eyebrow="Plan selected" title={`${plan.name} checkout.`} desc={`${plan.desc} Review included capacity and confirm the workspace path before billing is connected.`} onBack={onBack}>
     <div style={{ maxWidth:760, padding:28, borderRadius:18, border:`1px solid ${plan.featured?ACCENT+'55':BORD}`, background:plan.featured?'linear-gradient(150deg, rgba(0,201,167,0.1), rgba(255,255,255,0.035))':SURF }}>
       <CreditCard size={20} color={ACCENT}/>
@@ -584,10 +568,13 @@ const PlanPage = ({ plan, onBack, onOpenBuilder }) => (
         <PrimaryButton onClick={() => onOpenBuilder(plan.name)} subtle icon={Workflow}>Open admin QA lab</PrimaryButton>
       </div>
     </div>
+    <div style={{ marginTop:18, maxWidth:760 }}>
+      <WorkspaceControlPanel account={workspaceAccount} compact />
+    </div>
   </PageShell>
 );
 
-const AdminAutomationPage = ({ onBack, initialPlanName = 'Pro' }) => (
+const AdminAutomationPage = ({ onBack, initialPlanName = 'Pro', workspaceAccount }) => (
   <PageShell eyebrow="Internal operations" title="Admin automation QA lab." desc="Validate the paid Atom Builder experience as an operator, confirm plan boundaries, and make sure each automation flow works before subscribers rely on it." onBack={onBack} accent={ACCENT} maxWidth={1480}>
     <div className="page-grid" style={{ display:'grid', gridTemplateColumns:'repeat(3, minmax(0, 1fr))', gap:14, marginBottom:20 }}>
       {[
@@ -602,17 +589,30 @@ const AdminAutomationPage = ({ onBack, initialPlanName = 'Pro' }) => (
         </div>
       ))}
     </div>
-    <AutomationAtomBuilder
-      agents={AGENTS}
-      plans={PLANS}
-      initialPlanName={initialPlanName}
-      accent={ACCENT}
-      embedded
-            adminMode
-            fullScreen
-      contextLabel="Admin QA"
-      sectionId="admin-atom-builder"
-    />
+    <div style={{ marginBottom:20 }}>
+      <WorkspaceControlPanel account={workspaceAccount} compact />
+    </div>
+    <Suspense fallback={<SurfaceLoader label="Loading Atom Builder…" minHeight={560} />}>
+      <AutomationAtomBuilder
+        agents={AGENTS}
+        plans={PLANS}
+        initialPlanName={initialPlanName}
+        accent={ACCENT}
+        embedded
+        adminMode
+        fullScreen
+        contextLabel="Admin QA"
+        sectionId="admin-atom-builder"
+        workspaceContext={
+          workspaceAccount?.snapshot
+            ? {
+                organizationId: workspaceAccount.snapshot.workspace.organizationId,
+                userId: workspaceAccount.user?.id || null,
+              }
+            : null
+        }
+      />
+    </Suspense>
   </PageShell>
 );
 
@@ -648,73 +648,156 @@ const LegalPage = ({ type, onBack }) => {
   );
 };
 
+const HOME_SECTIONS = new Set(['agents', 'services', 'pricing']);
+
+const slugifyPathPart = (value) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+const findPlanBySlug = (slug) => PLANS.find((plan) => slugifyPathPart(plan.name) === slug) || null;
+const findAgentBySlug = (slug) => AGENTS.find((entry) => entry.id === slug) || null;
+
+function readPageFromLocation() {
+  if (typeof window === 'undefined') return { view:'home' };
+
+  const path = window.location.pathname.replace(/\/+$/, '') || '/';
+  const segments = path.split('/').filter(Boolean);
+
+  if (segments.length === 0) return { view:'home' };
+  if (segments[0] === 'start') return { view:'start' };
+  if (segments[0] === 'atom-builder') return { view:'atom-builder' };
+  if (segments[0] === 'demo') return { view:'demo' };
+  if (segments[0] === 'contact') return { view:'contact' };
+  if (segments[0] === 'docs') return findAgentBySlug(segments[1]) ? { view:'docs', agentId:segments[1] } : { view:'docs' };
+  if (segments[0] === 'agents' && findAgentBySlug(segments[1])) return { view:'agent', agentId:segments[1] };
+  if (segments[0] === 'plans' && findPlanBySlug(segments[1])) return { view:'plan', planName:findPlanBySlug(segments[1]).name };
+  if (segments[0] === 'admin-lab') return { view:'admin-builder', planName:findPlanBySlug(segments[1])?.name || 'Pro' };
+  if (segments[0] === 'legal' && ['privacy', 'terms', 'security'].includes(segments[1])) return { view:'legal', type:segments[1] };
+
+  return { view:'home' };
+}
+
+function buildPathForPage(page) {
+  if (!page || page.view === 'home') return '/';
+  if (page.view === 'start') return '/start';
+  if (page.view === 'atom-builder') return '/atom-builder';
+  if (page.view === 'demo') return '/demo';
+  if (page.view === 'contact' || page.view === 'sales') return '/contact';
+  if (page.view === 'docs') return page.agentId ? `/docs/${page.agentId}` : '/docs';
+  if (page.view === 'agent' && page.agentId) return `/agents/${page.agentId}`;
+  if (page.view === 'plan' && page.planName) return `/plans/${slugifyPathPart(page.planName)}`;
+  if (page.view === 'admin-builder') return `/admin-lab/${slugifyPathPart(page.planName || 'Pro')}`;
+  if (page.view === 'legal' && page.type) return `/legal/${page.type}`;
+  return '/';
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ROOT APP
 // ─────────────────────────────────────────────────────────────────────────────
 export default function AscentraPlatform() {
+  const workspaceAccount = useWorkspaceAccount();
   const [agent, setAgent]     = useState(null);
   const [scrolled, setScrolled] = useState(false);
-  const [page, setPage] = useState({ view:'home' });
+  const [page, setPage] = useState(() => readPageFromLocation());
 
   const pageAgent = AGENTS.find(a => a.id === page.agentId);
   const pagePlan = PLANS.find(p => p.name === page.planName);
 
-  const goHome = () => {
+  const navigatePage = (nextPage, { replace = false } = {}) => {
+    const nextPath = buildPathForPage(nextPage);
+    setPage(nextPage);
+
+    if (typeof window !== 'undefined') {
+      const currentPath = `${window.location.pathname}${window.location.hash}`;
+      if (currentPath !== nextPath) {
+        const method = replace ? 'replaceState' : 'pushState';
+        window.history[method]({}, '', nextPath);
+      }
+    }
+  };
+
+  const navigateHomeSection = (id) => {
+    const nextHash = HOME_SECTIONS.has(id) ? `#${id}` : '';
+    const nextUrl = `/${nextHash}`;
     setAgent(null);
     setPage({ view:'home' });
+
+    if (typeof window !== 'undefined') {
+      const method = page.view === 'home' ? 'replaceState' : 'pushState';
+      window.history[method]({}, '', nextUrl);
+      setTimeout(() => {
+        document.getElementById(id)?.scrollIntoView({ behavior:'smooth' });
+      }, page.view === 'home' ? 0 : 50);
+    }
+  };
+
+  const goHome = () => {
+    setAgent(null);
+    navigatePage({ view:'home' });
     setTimeout(() => window.scrollTo({ top:0, behavior:'smooth' }), 0);
   };
 
   const jumpTo = (id) => {
-    setAgent(null);
-    if (page.view !== 'home') {
-      setPage({ view:'home' });
-      setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior:'smooth' }), 50);
-      return;
-    }
-    document.getElementById(id)?.scrollIntoView({ behavior:'smooth' });
+    navigateHomeSection(id);
   };
 
   const openAgentPage = (nextAgent) => {
     setAgent(null);
-    setPage({ view:'agent', agentId:nextAgent.id });
+    navigatePage({ view:'agent', agentId:nextAgent.id });
     window.scrollTo({ top:0, behavior:'smooth' });
   };
 
   const openDocsPage = (nextAgent = null) => {
     setAgent(null);
-    setPage({ view:'docs', agentId:nextAgent?.id });
+    navigatePage(nextAgent ? { view:'docs', agentId:nextAgent.id } : { view:'docs' });
     window.scrollTo({ top:0, behavior:'smooth' });
   };
 
   const openPlanPage = (plan) => {
-    setPage({ view:'plan', planName:plan.name });
+    navigatePage({ view:'plan', planName:plan.name });
     window.scrollTo({ top:0, behavior:'smooth' });
   };
 
   const openAtomBuilderPage = () => {
     setAgent(null);
-    setPage({ view:'atom-builder' });
+    navigatePage({ view:'atom-builder' });
     window.scrollTo({ top:0, behavior:'smooth' });
   };
 
   const openAdminLab = (planName = 'Pro') => {
     setAgent(null);
-    setPage({ view:'admin-builder', planName });
+    navigatePage({ view:'admin-builder', planName });
     window.scrollTo({ top:0, behavior:'smooth' });
   };
 
   const renderPage = () => {
-    if (page.view === 'start') return <StartPage onBack={goHome} onOpenDocs={() => openDocsPage()} onSelectAgent={openAgentPage}/>;
+    if (page.view === 'start') return <StartPage onBack={goHome} onOpenDocs={() => openDocsPage()} onSelectAgent={openAgentPage} workspaceAccount={workspaceAccount}/>;
     if (page.view === 'docs') return <DocsPage onBack={goHome} focusAgent={pageAgent} onSelectAgent={openDocsPage}/>;
-    if (page.view === 'agent' && pageAgent) return <AgentWorkspacePage agent={pageAgent} onBack={goHome} onDocs={() => openDocsPage(pageAgent)}/>;
-    if (page.view === 'atom-builder') return <AtomBuilderPage PageShell={PageShell} onBack={goHome} onSeePricing={() => { goHome(); setTimeout(() => document.getElementById('pricing')?.scrollIntoView({ behavior:'smooth' }), 50); }} onOpenAdminLab={() => openAdminLab('Pro')} accent={ACCENT} bord={BORD} surf={SURF}/>;
-    if (page.view === 'admin-builder') return <AdminAutomationPage onBack={goHome} initialPlanName={page.planName || 'Pro'}/>;
+    if (page.view === 'agent' && pageAgent) return <AgentWorkspacePage agent={pageAgent} onBack={goHome} onDocs={() => openDocsPage(pageAgent)} onOpenBuilder={openAtomBuilderPage}/>;
+    if (page.view === 'atom-builder') {
+      return (
+        <Suspense fallback={<SurfaceLoader label="Loading Atom Builder…" minHeight="100vh" />}>
+          <AtomBuilderPage
+            selectedPlan={page.planName || 'Pro'}
+            agents={AGENTS}
+            plans={PLANS}
+            workspaceAccount={workspaceAccount}
+            onBack={goHome}
+            onSeePricing={() => jumpTo('pricing')}
+            onOpenAdminLab={() => openAdminLab(page.planName || 'Pro')}
+          />
+        </Suspense>
+      );
+    }
+    if (page.view === 'admin-builder') return <AdminAutomationPage onBack={goHome} initialPlanName={page.planName || 'Pro'} workspaceAccount={workspaceAccount}/>;
     if (page.view === 'demo') return <DemoPage onBack={goHome}/>;
     if (page.view === 'sales') return <ContactPage onBack={goHome}/>;
     if (page.view === 'contact') return <ContactPage onBack={goHome}/>;
     if (page.view === 'legal') return <LegalPage type={page.type} onBack={goHome}/>;
-    if (page.view === 'plan' && pagePlan) return <PlanPage plan={pagePlan} onBack={goHome} onOpenBuilder={openAdminLab}/>;
+    if (page.view === 'plan' && pagePlan) return <PlanPage plan={pagePlan} onBack={goHome} onOpenBuilder={openAdminLab} workspaceAccount={workspaceAccount}/>;
     return null;
   };
 
@@ -723,6 +806,22 @@ export default function AscentraPlatform() {
     window.addEventListener('scroll', fn);
     return () => window.removeEventListener('scroll', fn);
   }, []);
+
+  useEffect(() => {
+    const syncFromHistory = () => {
+      setAgent(null);
+      setPage(readPageFromLocation());
+      if (window.location.hash && page.view === 'home') {
+        const id = window.location.hash.replace('#', '');
+        requestAnimationFrame(() => {
+          document.getElementById(id)?.scrollIntoView({ behavior:'smooth' });
+        });
+      }
+    };
+
+    window.addEventListener('popstate', syncFromHistory);
+    return () => window.removeEventListener('popstate', syncFromHistory);
+  }, [page.view]);
 
   useEffect(() => {
     if (page.view !== 'home') window.scrollTo({ top:0, behavior:'smooth' });
@@ -772,7 +871,9 @@ export default function AscentraPlatform() {
           </div>
           <div>
             <div style={{ fontFamily:'Bricolage Grotesque, sans-serif', fontSize:16, fontWeight:800, letterSpacing:'-0.025em', lineHeight:1, color:'#fff' }}>Ascentra Integrations</div>
-            <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8, letterSpacing:'0.24em', color:'rgba(255,255,255,0.36)', marginTop:3, textTransform:'uppercase' }}>by Langolf Enterprises</div>
+            <div style={{ fontFamily:'JetBrains Mono, monospace', fontSize:8, letterSpacing:'0.24em', color:'rgba(255,255,255,0.36)', marginTop:3, textTransform:'uppercase' }}>
+              {workspaceAccount.snapshot.mode === 'supabase' ? 'live workspace' : 'preview mode'}
+            </div>
           </div>
         </div>
         <nav style={{ display:'flex', gap:22, alignItems:'center' }}>
@@ -788,7 +889,7 @@ export default function AscentraPlatform() {
           <button onClick={() => openAdminLab('Pro')} style={{ fontFamily:'Manrope, sans-serif', fontSize:13, color:'rgba(255,255,255,0.58)', background:'transparent', border:'none', padding:0, textDecoration:'none', fontWeight:500, transition:'color 0.18s', cursor:'pointer' }} onMouseEnter={e=>e.currentTarget.style.color='#fff'} onMouseLeave={e=>e.currentTarget.style.color='rgba(255,255,255,0.58)'}>
             Admin Lab
           </button>
-          <button onClick={() => setPage({ view:'start' })} style={{ padding:'8px 16px', borderRadius:9, border:'none', background:ACCENT, color:'#000', fontFamily:'Bricolage Grotesque, sans-serif', fontWeight:700, fontSize:13, cursor:'pointer', transition:'all 0.18s', boxShadow:`0 4px 14px rgba(0,201,167,0.28)` }} onMouseEnter={e=>e.currentTarget.style.transform='translateY(-1px)'} onMouseLeave={e=>e.currentTarget.style.transform='translateY(0)'}>
+          <button onClick={() => navigatePage({ view:'start' })} style={{ padding:'8px 16px', borderRadius:9, border:'none', background:ACCENT, color:'#000', fontFamily:'Bricolage Grotesque, sans-serif', fontWeight:700, fontSize:13, cursor:'pointer', transition:'all 0.18s', boxShadow:`0 4px 14px rgba(0,201,167,0.28)` }} onMouseEnter={e=>e.currentTarget.style.transform='translateY(-1px)'} onMouseLeave={e=>e.currentTarget.style.transform='translateY(0)'}>
             Start Free
           </button>
         </nav>
@@ -891,10 +992,10 @@ export default function AscentraPlatform() {
         </div>
         <div style={{ display:'flex', gap:20, flexWrap:'wrap', fontFamily:'Manrope, sans-serif', fontSize:12, color:'rgba(255,255,255,0.4)' }}>
           <span>© 2026 Langolf Enterprises</span>
-          <button onClick={() => setPage({ view:'legal', type:'privacy' })} style={{ color:'inherit', background:'transparent', border:'none', padding:0, cursor:'pointer', font:'inherit' }}>Privacy</button>
-          <button onClick={() => setPage({ view:'legal', type:'terms' })} style={{ color:'inherit', background:'transparent', border:'none', padding:0, cursor:'pointer', font:'inherit' }}>Terms</button>
-          <button onClick={() => setPage({ view:'legal', type:'security' })} style={{ color:'inherit', background:'transparent', border:'none', padding:0, cursor:'pointer', font:'inherit' }}>Security</button>
-          <button onClick={() => setPage({ view:'contact' })} style={{ color:'inherit', background:'transparent', border:'none', padding:0, cursor:'pointer', font:'inherit' }}>Contact</button>
+          <button onClick={() => navigatePage({ view:'legal', type:'privacy' })} style={{ color:'inherit', background:'transparent', border:'none', padding:0, cursor:'pointer', font:'inherit' }}>Privacy</button>
+          <button onClick={() => navigatePage({ view:'legal', type:'terms' })} style={{ color:'inherit', background:'transparent', border:'none', padding:0, cursor:'pointer', font:'inherit' }}>Terms</button>
+          <button onClick={() => navigatePage({ view:'legal', type:'security' })} style={{ color:'inherit', background:'transparent', border:'none', padding:0, cursor:'pointer', font:'inherit' }}>Security</button>
+          <button onClick={() => navigatePage({ view:'contact' })} style={{ color:'inherit', background:'transparent', border:'none', padding:0, cursor:'pointer', font:'inherit' }}>Contact</button>
         </div>
       </footer>
 

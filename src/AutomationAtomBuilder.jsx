@@ -34,18 +34,63 @@ import {
   Webhook,
   Workflow,
   Link2,
+  CalendarClock,
+  Clock,
+  Wifi,
+  KeyRound,
+  X,
 } from 'lucide-react';
 import { hasSupabaseConfig } from './lib/supabaseClient.js';
+import RunConsole from './atom-builder/RunConsole.jsx';
+import { getConfigFields, getNodeDefinition, getPorts } from './atom-builder/definitions.js';
+import { snapPoint } from './atom-builder/canvas.js';
+import { simulateWorkflow } from './atom-builder/simulation.js';
+import { loadDraft, saveDraft } from './atom-builder/persistence.js';
+import {
+  ATOM_CATEGORIES,
+  CORE_ATOMS,
+  buildAgentAtoms,
+  buildPaletteGroups,
+  findAtomDefinition,
+  getDefaultAtomConfig,
+  resolveBuilderKind,
+  visualForNode,
+} from './atom-builder/registry.js';
+import { buildConnection, reachableUpstreamNodes, validateWorkflow } from './atom-builder/graph.js';
 import {
   deleteAutomationFlow,
   getAutomationBackendStatus,
+  getExecutionDetail,
   listAutomationFlows,
   listAutomationRuns,
   listAutomationRunSteps,
+  listNativeExecutions,
   loadAutomationFlow,
   runAutomationNode,
   runAutomationPath,
+  runExecutionNative,
   saveAutomationFlow,
+  saveWorkflowVersion,
+  TERMINAL_EXECUTION_STATUSES,
+  cancelExecution,
+  retryExecution,
+  listConnectionsAndCredentials,
+  createConnection,
+  deleteConnection,
+  createCredential,
+  deleteCredential,
+  listApprovals,
+  decideApproval,
+  listSchedules,
+  upsertSchedule,
+  deleteSchedule,
+  listWebhooks,
+  createWebhook,
+  toggleWebhook,
+  deleteWebhook,
+  listVariables,
+  upsertVariable,
+  deleteVariable,
 } from './lib/automationBackend.js';
 
 const BUILDER_BG = '#0c111b';
@@ -59,88 +104,31 @@ const PLAN_RULES = {
   Enterprise: { atoms: 10, label: '10 atoms', editable: true, note: 'Enterprise unlocks up to 10 live atoms with advanced branching and approvals.' },
 };
 
-const INTEGRATIONS = [
-  { id: 'hubspot', label: 'HubSpot', subtitle: 'CRM sync', color: '#2563d4', Icon: Database, type: 'integration' },
-  { id: 'gmail', label: 'Gmail', subtitle: 'Outbound messages', color: '#d946a8', Icon: Mail, type: 'integration' },
-  { id: 'stripe', label: 'Stripe', subtitle: 'Billing events', color: '#6366f1', Icon: CreditCard, type: 'integration' },
-  { id: 'notion', label: 'Notion', subtitle: 'Knowledge sync', color: '#14b8a6', Icon: BookMarked, type: 'integration' },
-];
-
-const LOGIC_BLOCKS = [
-  { id: 'branch', label: 'Branch', subtitle: 'Route on conditions', color: '#2563d4', Icon: GitBranch, type: 'logic' },
-  { id: 'approval', label: 'Approval', subtitle: 'Human review step', color: '#f59e0b', Icon: ShieldCheck, type: 'logic' },
-  { id: 'transform', label: 'Transform', subtitle: 'Shape payloads', color: '#8b5cf6', Icon: SlidersHorizontal, type: 'logic' },
-];
+const INTEGRATIONS = CORE_ATOMS.filter((atom) => ['action', 'integration'].includes(atom.category));
+const LOGIC_BLOCKS = CORE_ATOMS.filter((atom) => ['logic', 'data'].includes(atom.category));
 
 const DEMO_METRICS = [
-  { label: 'Integrations Ready', value: '300+' },
-  { label: 'Review Gates', value: 'Human-in-loop' },
-  { label: 'Upcoming Characters', value: 'Growing roster' },
+  { label: 'Execution engine', value: 'Native' },
+  { label: 'Review gates', value: 'Approvals' },
+  { label: 'Triggers', value: 'Manual + Webhook' },
 ];
 
-const PALETTE_TABS = [
-  { id: 'all', label: 'All' },
-  { id: 'trigger', label: 'Triggers' },
-  { id: 'agent', label: 'Agents' },
-  { id: 'integration', label: 'Apps' },
-  { id: 'logic', label: 'Logic' },
-];
-
-const EXECUTION_PREVIEW = [
-  { label: 'Trigger latency', value: '220 ms' },
-  { label: 'Path branches', value: '2 active' },
-  { label: 'Last preview', value: 'Just now' },
-];
+const PALETTE_TABS = [{ id: 'all', label: 'All' }, ...ATOM_CATEGORIES];
 
 const MAKE_WEBHOOK_PRESETS = {
-  atlas: {
-    scenarioName: 'Atlas - Planning Generator',
-    webhookUrl: 'https://hook.us2.make.com/5nn78rw7tshotuya9j6fvbtpbxapkwu4',
-  },
-  axiom: {
-    scenarioName: 'Axiom - Research Generator',
-    webhookUrl: 'https://hook.us2.make.com/vfht8ht188l47b3uu9thetvp9dqz33g3',
-  },
-  cipher: {
-    scenarioName: 'Cipher - Security Generator',
-    webhookUrl: 'https://hook.us2.make.com/xleag84gdicobys3w78mrfjfh48j5jhj',
-  },
-  echo: {
-    scenarioName: 'Echo - Content Generator',
-    webhookUrl: 'https://hook.us2.make.com/yjl1cdi332bvw5t6iiomo4pgmoswpjm9',
-  },
-  forge: {
-    scenarioName: 'Forge - Build Generator',
-    webhookUrl: 'https://hook.us2.make.com/ekix3bff616ma6nlulzfl1w4qtauquxt',
-  },
-  kairos: {
-    scenarioName: 'Kairos - Timing Generator',
-    webhookUrl: 'https://hook.us2.make.com/5d27u2x2m2t015mx4okiljrny2fp8qyr',
-  },
-  lumen: {
-    scenarioName: 'Lumen - Insights Generator',
-    webhookUrl: 'https://hook.us2.make.com/e1vlrp2cel6a8m5g5ajiw44tajqijqdc',
-  },
-  nexus: {
-    scenarioName: 'Nexus - Integration Generator',
-    webhookUrl: 'https://hook.us2.make.com/p7cc7z9vq27ap9io5hafqouufpw5u1p6',
-  },
-  pulse: {
-    scenarioName: 'Pulse - Automation Generator',
-    webhookUrl: 'https://hook.us2.make.com/7pdix1a4g8vibbrh6hjnz0eufunhvck6',
-  },
-  veyra: {
-    scenarioName: 'Veyra - Design Generator',
-    webhookUrl: 'https://hook.us2.make.com/bv4248f9g78bxn7rf0ug6ukg0cp70yjm',
-  },
-  trigger: {
-    scenarioName: 'TALOS Master Intake',
-    webhookUrl: 'https://hook.us2.make.com/19ghu3wt54tf9zsydrr9k6hzsp48xika',
-  },
-  integration: {
-    scenarioName: 'Nexus - Integration Generator',
-    webhookUrl: 'https://hook.us2.make.com/p7cc7z9vq27ap9io5hafqouufpw5u1p6',
-  },
+  atlas: { scenarioName: 'Atlas - Planning Generator', webhookUrl: '' },
+  axiom: { scenarioName: 'Axiom - Research Generator', webhookUrl: '' },
+  cipher: { scenarioName: 'Cipher - Security Generator', webhookUrl: '' },
+  echo: { scenarioName: 'Echo - Content Generator', webhookUrl: '' },
+  forge: { scenarioName: 'Forge - Build Generator', webhookUrl: '' },
+  kairos: { scenarioName: 'Kairos - Timing Generator', webhookUrl: '' },
+  lumen: { scenarioName: 'Lumen - Insights Generator', webhookUrl: '' },
+  nexus: { scenarioName: 'Nexus - Integration Generator', webhookUrl: '' },
+  pulse: { scenarioName: 'Pulse - Automation Generator', webhookUrl: '' },
+  veyra: { scenarioName: 'Veyra - Design Generator', webhookUrl: '' },
+  trigger: { scenarioName: 'TAL manual / webhook trigger', webhookUrl: '' },
+  integration: { scenarioName: 'External connector', webhookUrl: '' },
+  make: { scenarioName: 'Make.com scenario', webhookUrl: '' },
 };
 
 const AGENT_PAYLOAD_SCHEMAS = {
@@ -392,7 +380,90 @@ function createMakeConfig(type, title, agentId = null) {
 }
 
 function nodeSupportsMake(node) {
-  return node && node.type !== 'logic';
+  return Boolean(node && (resolveBuilderKind(node) === 'make' || node.makeConfig?.enabled));
+}
+
+function defaultNativeConfig(item) {
+  return getDefaultAtomConfig(item);
+}
+
+function nativeKindOf(node) {
+  return resolveBuilderKind(node);
+}
+
+function RawJsonEditor({ initial, onChange, placeholder, rows = 3, compact = false }) {
+  const [raw, setRaw] = useState(typeof initial === 'string' ? initial : JSON.stringify(initial ?? {}, null, 2));
+  return (
+    <textarea
+      rows={rows}
+      value={raw}
+      onChange={(event) => {
+        const text = event.target.value;
+        setRaw(text);
+        try {
+          onChange(JSON.parse(text || '{}'));
+        } catch {
+          // not valid JSON yet, keep last parsed value
+        }
+      }}
+      placeholder={placeholder}
+      style={{
+        width: '100%',
+        boxSizing: 'border-box',
+        resize: 'vertical',
+        borderRadius: 14,
+        border: `1px solid ${BUILDER_BORD}`,
+        background: 'rgba(255,255,255,0.03)',
+        color: '#fff',
+        padding: '12px 13px',
+        fontFamily: compact ? 'JetBrains Mono, monospace' : 'Manrope, sans-serif',
+        fontSize: compact ? 11 : 13,
+        lineHeight: 1.5,
+        outline: 'none',
+      }}
+    />
+  );
+}
+
+const BRANCH_OPERATORS = [
+  ['equals', 'equals'],
+  ['not_equals', 'not equals'],
+  ['greater_than', 'greater than'],
+  ['greater_than_or_equal', '>= '],
+  ['less_than', 'less than'],
+  ['less_than_or_equal', '<= '],
+  ['contains', 'contains'],
+  ['not_contains', 'not contains'],
+  ['exists', 'exists'],
+  ['not_exists', 'not exists'],
+  ['empty', 'is empty'],
+  ['not_empty', 'is not empty'],
+  ['starts_with', 'starts with'],
+  ['ends_with', 'ends with'],
+  ['matches', 'matches'],
+];
+
+function inferNativeConfig(row) {
+  const item = {
+    id: String(row.id || '').split('-')[0],
+    type: row.type,
+    label: row.title,
+  };
+  if (row.type === 'logic') {
+    const id = String(row.id || '') + String(row.title || '').toLowerCase();
+    const kind = /branch|decision|tier/.test(id) ? 'branch'
+      : /approval/.test(id) ? 'approval'
+        : /delay/.test(id) ? 'delay'
+          : 'transform';
+    const base = defaultNativeConfig({ id: kind, type: 'logic', label: kind });
+    return { ...base };
+  }
+  if (row.type === 'integration') {
+    const id = String(row.id || '').toLowerCase() + String(row.title || '').toLowerCase();
+    const kind = /http/.test(id) ? 'http' : /make/.test(id) || /webhook/.test(id) ? 'make' : String(row.id || '').split('-')[0] || 'http';
+    return { ...defaultNativeConfig({ id: kind, type: 'integration', label: '' }) };
+  }
+  return defaultNativeConfig({ id: row.id, type: row.type, label: row.title });
 }
 
 function getExecutionOrder(nodes, edges) {
@@ -450,12 +521,12 @@ function createTemplates(agents) {
   });
 
   const starterNodes = [
-    { id: 'pulse-intake', type: 'trigger', title: 'Pulse Intake', subtitle: 'Webhook trigger', lane: -1, column: 0, color: '#ec4899', Icon: Webhook, mode: 'Trigger', approval: 'None', retries: '0', notes: 'Preview path incoming from webhook or app event.', makeConfig: createMakeConfig('trigger', 'Pulse Intake', 'pulse') },
+    { id: 'pulse-intake', type: 'webhook', title: 'Webhook Intake', subtitle: 'External event', lane: -1, column: 0, color: '#ec4899', Icon: Webhook, mode: 'Trigger', approval: 'None', retries: '0', notes: 'Preview path incoming from a signed webhook event.', makeConfig: createMakeConfig('trigger', 'Webhook Intake', 'pulse') },
     agentAtom('pulse', 'Pulse Automation', 'Workflow handoff', -1, 1),
     { id: 'forge-intake', type: 'trigger', title: 'Forge Intake', subtitle: 'Manual launch', lane: 1, column: 0, color: '#ec4899', Icon: CircleDot, mode: 'Trigger', approval: 'None', retries: '0', notes: 'Preview path kicked off by the operator.', makeConfig: createMakeConfig('trigger', 'Forge Intake', 'forge') },
     agentAtom('forge', 'Forge Build Generator', 'App builder atom', 1, 1),
     { id: 'decision-router', type: 'logic', title: 'Decision Router', subtitle: 'Condition split', lane: 0, column: 2, color: '#2563d4', Icon: GitBranch, mode: 'Logic', approval: 'Required', retries: '0', notes: 'Route into different atoms based on score, segment, or urgency.' },
-    { id: 'nexus-sync', type: 'integration', title: 'Nexus CRM Sync', subtitle: 'HubSpot update', lane: -1, column: 3, color: '#2563d4', Icon: Database, mode: 'Integration', approval: 'Optional', retries: '1', notes: 'Push enriched records back into the CRM.', makeConfig: createMakeConfig('integration', 'Nexus CRM Sync', 'nexus') },
+    { id: 'http-sync', type: 'integration', title: 'HTTP Handoff', subtitle: 'Connected API action', lane: -1, column: 3, color: '#f97316', Icon: Rocket, mode: 'Action', approval: 'Optional', retries: '1', notes: 'Send enriched records to a configured API.', makeConfig: createMakeConfig('integration', 'HTTP Handoff', 'nexus'), config: { kind: 'http', url: '', method: 'POST', headers: {}, body: {} } },
     agentAtom('echo', 'Echo Follow-up', 'Campaign response', 1, 3),
   ];
 
@@ -464,41 +535,41 @@ function createTemplates(agents) {
     ['forge-intake', 'forge-1-1'],
     ['pulse--1-1', 'decision-router'],
     ['forge-1-1', 'decision-router'],
-    ['decision-router', 'nexus-sync'],
-    ['decision-router', 'echo-1-3'],
+    ['decision-router', 'http-sync', 'true'],
+    ['decision-router', 'echo-1-3', 'false'],
   ];
 
   const proNodes = [
-    { id: 'pro-trigger', type: 'trigger', title: 'Revenue Trigger', subtitle: 'Stripe invoice event', lane: 0, column: 0, color: '#ec4899', Icon: Webhook, mode: 'Trigger', approval: 'None', retries: '0', notes: 'Wake this automation when a payment event lands.', makeConfig: createMakeConfig('trigger', 'Revenue Trigger', 'pulse') },
+    { id: 'pro-trigger', type: 'trigger', title: 'Manual Trigger', subtitle: 'Run on demand', lane: 0, column: 0, color: '#ec4899', Icon: CircleDot, mode: 'Trigger', approval: 'None', retries: '0', notes: 'Start this workflow from the Run button.', makeConfig: createMakeConfig('trigger', 'Manual Trigger', 'pulse'), config: { kind: 'manual' } },
     agentAtom('pulse', 'Pulse Recovery Loop', 'Automation sequence', 0, 1),
-    { id: 'pro-gmail', type: 'integration', title: 'Gmail Outreach', subtitle: 'Customer follow-up', lane: 0, column: 2, color: '#2563d4', Icon: Mail, mode: 'Integration', approval: 'Optional', retries: '1', notes: 'Send the follow-up sequence after Pulse assembles the next action.', makeConfig: createMakeConfig('integration', 'Gmail Outreach', 'nexus') },
+    { id: 'pro-http', type: 'integration', title: 'HTTP Request', subtitle: 'Send the next action', lane: 0, column: 2, color: '#f97316', Icon: Rocket, mode: 'Action', approval: 'Optional', retries: '1', notes: 'Send the AI result to a configured API.', makeConfig: createMakeConfig('integration', 'HTTP Request', 'nexus'), config: { kind: 'http', url: '', method: 'POST', headers: {}, body: { summary: '{{ previous.output.content }}' } } },
   ];
 
   const proEdges = [
     ['pro-trigger', 'pulse-0-1'],
-    ['pulse-0-1', 'pro-gmail'],
+    ['pulse-0-1', 'pro-http'],
   ];
 
   const enterpriseNodes = [
-    { id: 'ent-trigger', type: 'trigger', title: 'Nexus Intake', subtitle: 'Salesforce lead event', lane: 0, column: 0, color: '#ec4899', Icon: Webhook, mode: 'Trigger', approval: 'None', retries: '0', notes: 'Listen for qualified inbound demand.', makeConfig: createMakeConfig('trigger', 'Nexus Intake', 'nexus') },
+    { id: 'ent-trigger', type: 'webhook', title: 'Webhook Intake', subtitle: 'Qualified inbound event', lane: 0, column: 0, color: '#ec4899', Icon: Webhook, mode: 'Trigger', approval: 'None', retries: '0', notes: 'Listen for a signed inbound event.', makeConfig: createMakeConfig('trigger', 'Webhook Intake', 'nexus'), config: { kind: 'webhook' } },
     agentAtom('axiom', 'Axiom Qualification', 'Decision support atom', 0, 1),
     { id: 'ent-branch', type: 'logic', title: 'Tier Branch', subtitle: 'Segment enterprise vs SMB', lane: 0, column: 2, color: '#2563d4', Icon: GitBranch, mode: 'Logic', approval: 'Required', retries: '0', notes: 'Branch by company size, deal value, or health score.' },
     agentAtom('veyra', 'Veyra Creative Pack', 'Design response', -1, 3),
     agentAtom('forge', 'Forge Solution Draft', 'Technical proposal', 0, 3),
     agentAtom('echo', 'Echo Sequence', 'Follow-up copy', 1, 3),
-    { id: 'ent-notion', type: 'integration', title: 'Notion Workspace', subtitle: 'Knowledge handoff', lane: -1, column: 4, color: '#14b8a6', Icon: BookMarked, mode: 'Integration', approval: 'Optional', retries: '1', notes: 'Document the creative path for the team.', makeConfig: createMakeConfig('integration', 'Notion Workspace', 'nexus') },
-    { id: 'ent-stripe', type: 'integration', title: 'Stripe Handoff', subtitle: 'Billing readiness', lane: 0, column: 4, color: '#6366f1', Icon: CreditCard, mode: 'Integration', approval: 'Optional', retries: '1', notes: 'Prepare billing and commercial handoff.', makeConfig: createMakeConfig('integration', 'Stripe Handoff', 'nexus') },
+    { id: 'ent-docs-api', type: 'integration', title: 'Documentation API', subtitle: 'Knowledge handoff', lane: -1, column: 4, color: '#f97316', Icon: Rocket, mode: 'Action', approval: 'Optional', retries: '1', notes: 'Document the creative path through a configured API.', makeConfig: createMakeConfig('integration', 'Documentation API', 'nexus'), config: { kind: 'http', url: '', method: 'POST', headers: {}, body: {} } },
+    { id: 'ent-billing-api', type: 'integration', title: 'Billing API', subtitle: 'Commercial handoff', lane: 0, column: 4, color: '#f97316', Icon: Rocket, mode: 'Action', approval: 'Optional', retries: '1', notes: 'Send billing readiness to a configured API.', makeConfig: createMakeConfig('integration', 'Billing API', 'nexus'), config: { kind: 'http', url: '', method: 'POST', headers: {}, body: {} } },
     agentAtom('pulse', 'Pulse Follow-through', 'Automation wrap-up', 1, 4),
   ];
 
   const enterpriseEdges = [
     ['ent-trigger', 'axiom-0-1'],
     ['axiom-0-1', 'ent-branch'],
-    ['ent-branch', 'veyra--1-3'],
-    ['ent-branch', 'forge-0-3'],
-    ['ent-branch', 'echo-1-3'],
-    ['veyra--1-3', 'ent-notion'],
-    ['forge-0-3', 'ent-stripe'],
+    ['ent-branch', 'veyra--1-3', 'true'],
+    ['ent-branch', 'forge-0-3', 'false'],
+    ['ent-branch', 'echo-1-3', 'false'],
+    ['veyra--1-3', 'ent-docs-api'],
+    ['forge-0-3', 'ent-billing-api'],
     ['echo-1-3', 'pulse-1-4'],
   ];
 
@@ -507,36 +578,28 @@ function createTemplates(agents) {
       name: 'Cross-team launch preview',
       summary: 'A read-only preview showing how multiple agents can merge into a single automation fabric.',
       nodes: starterNodes,
-      edges: starterEdges.map(([from, to]) => ({ from, to })),
+      edges: starterEdges.map(([from, to, label]) => ({ from, to, ...(label ? { label } : {}) })),
       selectedNodeId: 'decision-router',
     },
     Pro: {
       name: 'Revenue recovery loop',
       summary: 'A compact paid automation with up to 3 live atoms.',
       nodes: proNodes,
-      edges: proEdges.map(([from, to]) => ({ from, to })),
+      edges: proEdges.map(([from, to, label]) => ({ from, to, ...(label ? { label } : {}) })),
       selectedNodeId: 'pulse-0-1',
     },
     Enterprise: {
       name: 'Multi-agent GTM path',
       summary: 'Branch creative, proposal, and outreach work across a larger automation graph.',
       nodes: enterpriseNodes,
-      edges: enterpriseEdges.map(([from, to]) => ({ from, to })),
+      edges: enterpriseEdges.map(([from, to, label]) => ({ from, to, ...(label ? { label } : {}) })),
       selectedNodeId: 'ent-branch',
     },
   };
 }
 
 function buildAgentLibrary(agents) {
-  return agents.map((agent) => ({
-    id: agent.id,
-    label: agent.name,
-    subtitle: agent.specialty,
-    color: agent.color,
-    Icon: agent.Icon,
-    type: 'agent',
-    agentId: agent.id,
-  }));
+  return buildAgentAtoms(agents);
 }
 
 function buildAtomFromLibrary(item, lane, column) {
@@ -555,6 +618,10 @@ function buildAtomFromLibrary(item, lane, column) {
     retries: item.type === 'trigger' ? '0' : '1',
     notes: `Customize ${item.label} inside the inspector.`,
     makeConfig: item.type === 'logic' ? null : createMakeConfig(item.type, item.label, item.agentId || null),
+    kind: getNodeDefinition(item).kind,
+    nativeKind: getNodeDefinition(item).nativeKind,
+    definitionVersion: getNodeDefinition(item).version,
+    config: defaultNativeConfig(item),
   };
 }
 
@@ -568,10 +635,18 @@ function getPosition(node) {
   };
 }
 
+function cloneGraphNodes(nodes) {
+  return nodes.map((node) => ({
+    ...node,
+    config: node.config ? structuredClone(node.config) : node.config,
+    makeConfig: node.makeConfig ? structuredClone(node.makeConfig) : node.makeConfig,
+  }));
+}
+
 function getPortPosition(node, side = 'right') {
   const pos = getPosition(node);
   return {
-    x: pos.x + (side === 'right' ? 44 : -44),
+    x: pos.x + (side === 'right' ? 92 : -92),
     y: pos.y,
   };
 }
@@ -637,6 +712,74 @@ function getTriggerVisual(row) {
   };
 }
 
+function ConnectionCreate({ onCreated, accent, border, organizationId, credentials = [] }) {
+  const [name, setName] = useState('');
+  const [provider, setProvider] = useState('http');
+  const [credentialId, setCredentialId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setBusy(true);
+    try {
+      await createConnection({ organizationId, name: name.trim(), provider, credentialId: credentialId || null });
+      onCreated(`Connection "${name.trim()}" created.`);
+      setName('');
+    } catch (err) {
+      onCreated(err.message || 'Failed to create connection.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form onSubmit={submit} style={{ display: 'grid', gap: 6, padding: 10, borderRadius: 12, background: 'rgba(255,255,255,0.02)', border: `1px solid ${border}` }}>
+      <div style={{ color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 12, fontWeight: 700 }}>Add connection</div>
+      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="connection name" style={{ padding: '7px 9px', borderRadius: 9, border: `1px solid ${border}`, background: 'rgba(0,0,0,0.3)', color: '#fff', fontFamily: 'Manrope, sans-serif', fontSize: 12 }} />
+      <select value={provider} onChange={(e) => setProvider(e.target.value)} style={{ padding: '7px 9px', borderRadius: 9, border: `1px solid ${border}`, background: 'rgba(0,0,0,0.3)', color: '#fff', fontFamily: 'Manrope, sans-serif', fontSize: 12 }}>
+        {['http', 'generic', 'stripe', 'resend', 'slack', 'notion', 'openai', 'anthropic', 'gemini'].map((p) => <option key={p} value={p}>{p}</option>)}
+      </select>
+      <select value={credentialId} onChange={(e) => setCredentialId(e.target.value)} style={{ padding: '7px 9px', borderRadius: 9, border: `1px solid ${border}`, background: 'rgba(0,0,0,0.3)', color: '#fff', fontFamily: 'Manrope, sans-serif', fontSize: 12 }}>
+        <option value="">No credential</option>
+        {credentials.filter((item) => item.provider === provider || provider === 'generic' || provider === 'http').map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+      </select>
+      <button type="submit" disabled={busy || !name.trim()} style={{ padding: '7px 9px', borderRadius: 9, border: 'none', background: accent, color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 11, cursor: 'pointer' }}>{busy ? 'Creating…' : 'Create'}</button>
+    </form>
+  );
+}
+
+function CredentialCreate({ onCreated, accent, border, organizationId }) {
+  const [name, setName] = useState('');
+  const [secret, setSecret] = useState('');
+  const [provider, setProvider] = useState('openai');
+  const [busy, setBusy] = useState(false);
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setBusy(true);
+    try {
+      await createCredential({ organizationId, name: name.trim(), provider, secret: { apiKey: secret.trim() } });
+      onCreated(`Credential "${name.trim()}" stored (encrypted).`);
+      setName('');
+      setSecret('');
+    } catch (err) {
+      onCreated(err.message || 'Failed to store credential.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form onSubmit={submit} style={{ display: 'grid', gap: 6, padding: 10, borderRadius: 12, background: 'rgba(255,255,255,0.02)', border: `1px solid ${border}` }}>
+      <div style={{ color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 12, fontWeight: 700 }}>Add credential</div>
+      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="credential name" style={{ padding: '7px 9px', borderRadius: 9, border: `1px solid ${border}`, background: 'rgba(0,0,0,0.3)', color: '#fff', fontFamily: 'Manrope, sans-serif', fontSize: 12 }} />
+      <select value={provider} onChange={(e) => setProvider(e.target.value)} style={{ padding: '7px 9px', borderRadius: 9, border: `1px solid ${border}`, background: 'rgba(0,0,0,0.3)', color: '#fff', fontFamily: 'Manrope, sans-serif', fontSize: 12 }}>
+        {['openai', 'anthropic', 'gemini', 'http', 'generic', 'stripe', 'slack', 'notion'].map((item) => <option key={item} value={item}>{item}</option>)}
+      </select>
+      <input type="password" autoComplete="new-password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder="API key or access token" style={{ padding: '7px 9px', borderRadius: 9, border: `1px solid ${border}`, background: 'rgba(0,0,0,0.3)', color: '#fff', fontFamily: 'Manrope, sans-serif', fontSize: 12 }} />
+      <button type="submit" disabled={busy || !name.trim() || !secret.trim()} style={{ padding: '7px 9px', borderRadius: 9, border: 'none', background: accent, color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 11, cursor: 'pointer' }}>{busy ? 'Storing…' : 'Store securely'}</button>
+    </form>
+  );
+}
+
 export default function AutomationAtomBuilder({
   agents,
   plans,
@@ -648,11 +791,13 @@ export default function AutomationAtomBuilder({
   adminMode = false,
   fullScreen = false,
   contextLabel = 'Main hub',
+  workspaceContext = null,
 }) {
   const templates = useMemo(() => createTemplates(agents), [agents]);
   const libraryAgents = useMemo(() => buildAgentLibrary(agents), [agents]);
   const agentMap = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);
   const canvasRef = useRef(null);
+  const graphHistoryRef = useRef({ past: [], future: [] });
   const [activePlanName, setActivePlanName] = useState(templates[initialPlanName] ? initialPlanName : 'Starter');
   const [flowName, setFlowName] = useState(templates[initialPlanName]?.name || templates.Starter.name);
   const [flowSummary, setFlowSummary] = useState(templates[initialPlanName]?.summary || templates.Starter.summary);
@@ -665,6 +810,8 @@ export default function AutomationAtomBuilder({
   const [activePalette, setActivePalette] = useState('all');
   const [inspectorTab, setInspectorTab] = useState('settings');
   const [runState, setRunState] = useState('Draft');
+  const [simulationResult, setSimulationResult] = useState(null);
+  const [workflowVersion, setWorkflowVersion] = useState(null);
   const [canvasMode, setCanvasMode] = useState('build');
   const [dragState, setDragState] = useState(null);
   const [connectState, setConnectState] = useState(null);
@@ -678,21 +825,156 @@ export default function AutomationAtomBuilder({
   const [backendRuns, setBackendRuns] = useState([]);
   const [runsBusy, setRunsBusy] = useState(false);
   const [activeRunId, setActiveRunId] = useState(null);
+  const [activeRunKind, setActiveRunKind] = useState('legacy');
+  const [executionStatus, setExecutionStatus] = useState(null);
+  const [nativeRuns, setNativeRuns] = useState({});
+  const [manualPayload, setManualPayload] = useState('{\n  "body": {\n    "amount": 300,\n    "email": "ops@ascentra.ai"\n  }\n}');
   const [backendStatus, setBackendStatus] = useState(null);
   const [backendStatusBusy, setBackendStatusBusy] = useState(false);
+  const [connections, setConnections] = useState(null);
+  const [connBusy, setConnBusy] = useState(false);
+  const [approvals, setApprovals] = useState([]);
+  const [approvalsBusy, setApprovalsBusy] = useState(false);
+  const [schedules, setSchedules] = useState([]);
+  const [webhooks, setWebhooks] = useState([]);
+  const [variables, setVariables] = useState([]);
+  const [triggersBusy, setTriggersBusy] = useState(false);
+  const [scheduleForm, setScheduleForm] = useState(null);
+  const [webhookForm, setWebhookForm] = useState(null);
+  const [variableForm, setVariableForm] = useState(null);
+  const [historyRevision, setHistoryRevision] = useState(0);
+  const [validationOpen, setValidationOpen] = useState(false);
+  const [runConsoleOpen, setRunConsoleOpen] = useState(false);
+  const [managementOpen, setManagementOpen] = useState(false);
+  const [quickAddNodeId, setQuickAddNodeId] = useState(null);
+  const [quickAddQuery, setQuickAddQuery] = useState('');
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const clipboardRef = useRef(null);
 
   const planRule = PLAN_RULES[activePlanName];
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) || null;
+  const selectedNodeDefinition = selectedNode ? getNodeDefinition(selectedNode) : null;
+  const selectedNodeInputs = selectedNode ? getPorts(selectedNode, 'input') : [];
+  const selectedNodeOutputs = selectedNode ? getPorts(selectedNode, 'output') : [];
+  const selectedNodeConfigFields = selectedNode ? getConfigFields(selectedNode) : [];
   const selectedNodeSchema = getActiveNodeSchema(selectedNode);
   const liveAtomCount = nodes.length;
   const zoomScale = zoom / 100;
+  const organizationId = workspaceContext?.organizationId || null;
+  const currentUserId = workspaceContext?.userId || null;
+  const canUseWorkspaceBackend = Boolean(hasSupabaseConfig && organizationId && currentUserId);
   const backendLabel = !hasSupabaseConfig
     ? adminMode ? 'Local QA preview' : 'Backend not connected'
+    : !canUseWorkspaceBackend
+      ? 'Preview mode · sign in to save'
     : backendStatus?.ok
       ? 'Frontend and backend linked'
       : backendStatusBusy
         ? 'Checking backend'
         : 'Supabase configured';
+  const validation = useMemo(() => validateWorkflow(nodes, edges), [nodes, edges]);
+  const upstreamNodes = useMemo(() => selectedNode ? reachableUpstreamNodes(nodes, edges, selectedNode.id) : [], [nodes, edges, selectedNodeId]);
+  const paletteGroups = useMemo(() => buildPaletteGroups(agents), [agents]);
+  const paletteItems = useMemo(() => paletteGroups.flatMap((group) => group.items), [paletteGroups]);
+  const canUndo = graphHistoryRef.current.past.length > 0;
+  const canRedo = graphHistoryRef.current.future.length > 0;
+
+  const graphSnapshot = () => ({ nodes: cloneGraphNodes(nodes), edges: edges.map((edge) => ({ ...edge })), selectedNodeId });
+
+  const recordGraphSnapshot = () => {
+    graphHistoryRef.current.past.push(graphSnapshot());
+    graphHistoryRef.current.past = graphHistoryRef.current.past.slice(-60);
+    graphHistoryRef.current.future = [];
+    setHistoryRevision((value) => value + 1);
+  };
+
+  const resetGraphHistory = () => {
+    graphHistoryRef.current = { past: [], future: [] };
+    setHistoryRevision((value) => value + 1);
+  };
+
+  const restoreGraphSnapshot = (snapshot) => {
+    setNodes(cloneGraphNodes(snapshot.nodes));
+    setEdges(snapshot.edges.map((edge) => ({ ...edge })));
+    setSelectedNodeId(snapshot.selectedNodeId || snapshot.nodes[0]?.id || null);
+    setRunState('Edited');
+  };
+
+  const undoGraph = () => {
+    const snapshot = graphHistoryRef.current.past.pop();
+    if (!snapshot) {
+      setNotice('Nothing to undo.');
+      return;
+    }
+    graphHistoryRef.current.future.push(graphSnapshot());
+    restoreGraphSnapshot(snapshot);
+    setNotice('Last canvas change undone.');
+    setHistoryRevision((value) => value + 1);
+  };
+
+  const redoGraph = () => {
+    const snapshot = graphHistoryRef.current.future.pop();
+    if (!snapshot) {
+      setNotice('Nothing to redo.');
+      return;
+    }
+    graphHistoryRef.current.past.push(graphSnapshot());
+    restoreGraphSnapshot(snapshot);
+    setNotice('Canvas change restored.');
+    setHistoryRevision((value) => value + 1);
+  };
+
+  const runValidation = ({ focus = true } = {}) => {
+    setValidationOpen(true);
+    if (validation.valid) {
+      setNotice(validation.warnings ? `Workflow is ready with ${validation.warnings} warning${validation.warnings === 1 ? '' : 's'}.` : 'Workflow is ready to run.');
+      return true;
+    }
+    const first = validation.issues.find((entry) => entry.severity === 'error');
+    if (focus && first?.nodeId) {
+      setSelectedNodeId(first.nodeId);
+      setInspectorTab('settings');
+    }
+    setNotice(first?.message || 'Fix the workflow issues before running.');
+    return false;
+  };
+
+  const runLocalSimulation = () => {
+    let triggerPayload = {};
+    try {
+      triggerPayload = manualPayload.trim() ? JSON.parse(manualPayload) : {};
+    } catch (error) {
+      setSimulationResult({ ok: false, mode: 'local', trace: [], boundaries: [], validation: { issues: [{ severity: 'error', message: `Test payload is not valid JSON: ${error.message}` }] } });
+      setRunState('Needs fixes');
+      setNotice('Fix the local test payload before simulating.');
+      return;
+    }
+
+    const result = simulateWorkflow({ nodes, edges }, { triggerPayload });
+    setSimulationResult(result);
+    setRunConsoleOpen(true);
+    setRunState(result.ok ? 'Simulated' : 'Needs fixes');
+    const boundaryCount = result.boundaries.length;
+    if (!result.ok) {
+      setNotice(result.validation.issues[0]?.message || 'Fix the workflow before simulating.');
+      return;
+    }
+    setNotice(`Local simulation evaluated ${result.trace.length} node${result.trace.length === 1 ? '' : 's'}${boundaryCount ? ` and stopped at ${boundaryCount} external boundar${boundaryCount === 1 ? 'y' : 'ies'}` : ''}.`);
+  };
+
+  const fitWorkflow = () => {
+    if (!nodes.length) {
+      setZoom(100);
+      return;
+    }
+    const positions = nodes.map(getPosition);
+    const width = Math.max(...positions.map((point) => point.x)) - Math.min(...positions.map((point) => point.x)) + 240;
+    const height = Math.max(...positions.map((point) => point.y)) - Math.min(...positions.map((point) => point.y)) + 180;
+    const nextZoom = Math.round(Math.max(70, Math.min(120, Math.min(1120 / width, 610 / height) * 100)) / 10) * 10;
+    setZoom(nextZoom);
+    setNotice(`Workflow fit to ${nextZoom}%.`);
+  };
 
   const hydrateMakeConfig = (type, title, config) => {
     const presetAgentId = config?.agentId || null;
@@ -737,7 +1019,7 @@ export default function AutomationAtomBuilder({
 
   const restoreNode = (row) => {
     const visual =
-      row.type === 'agent'
+      row.type === 'agent' || row.type === 'ai'
         ? getAgentVisual(agentMap, row)
         : row.type === 'integration'
           ? getIntegrationVisual(row)
@@ -762,17 +1044,19 @@ export default function AutomationAtomBuilder({
       retries: `${row.retries ?? 0}`,
       notes: row.notes || '',
       makeConfig: hydrateMakeConfig(row.type, row.title, row.make_config),
+      config: row.config ?? inferNativeConfig(row),
     };
   };
 
   const applyPresetToNode = (node) => {
-    if (!nodeSupportsMake(node)) return node;
-    if (node.makeConfig?.webhookUrl) return node;
+    const withConfig = node.config ? node : { ...node, config: inferNativeConfig(node) };
+    if (!nodeSupportsMake(node)) return withConfig;
+    if (withConfig.makeConfig?.webhookUrl) return withConfig;
     return {
-      ...node,
+      ...withConfig,
       makeConfig: {
         ...createMakeConfig(node.type, node.title, node.agentId || null),
-        ...(node.makeConfig || {}),
+        ...(withConfig.makeConfig || {}),
       },
     };
   };
@@ -787,22 +1071,24 @@ export default function AutomationAtomBuilder({
     setFlowSummary(template.summary);
     setNotice(`New ${planName} automation draft started.`);
     setRunState(planName === 'Starter' ? 'Preview' : 'Draft');
+    setSimulationResult(null);
+    setWorkflowVersion(null);
     setCanvasMode('build');
     setDragState(null);
     setConnectState(null);
     setPointerPos(null);
     setFlowId(null);
     setActiveRunId(null);
+    setActiveRunKind('legacy');
+    setExecutionStatus(null);
+    setNativeRuns({});
     setRunLog([]);
     setBackendRuns([]);
+    setValidationOpen(false);
+    setRunConsoleOpen(false);
+    setQuickAddNodeId(null);
+    resetGraphHistory();
   };
-
-  const paletteGroups = [
-    { id: 'trigger', title: 'Triggers', items: [{ id: 'webhook-trigger', label: 'Webhook', subtitle: 'External event', color: '#ec4899', Icon: Webhook, type: 'trigger' }] },
-    { id: 'agent', title: 'Agents', items: libraryAgents },
-    { id: 'integration', title: 'Integrations', items: INTEGRATIONS },
-    { id: 'logic', title: 'Logic', items: LOGIC_BLOCKS },
-  ];
 
   const filteredPaletteGroups = paletteGroups
     .map((group) => ({
@@ -834,7 +1120,7 @@ export default function AutomationAtomBuilder({
     setNotice(PLAN_RULES[nextPlan].note);
   };
 
-  const appendAtom = (item, branch = false) => {
+  const appendAtom = (item, branch = false, options = {}) => {
     if (!planRule.editable) {
       setNotice('Atom Builder is included with Pro and Enterprise. Starter does not unlock live automation drafting.');
       return;
@@ -845,22 +1131,27 @@ export default function AutomationAtomBuilder({
       return;
     }
 
-    const source = selectedNode || nodes[nodes.length - 1];
+    const source = nodes.find((node) => node.id === options.sourceId) || selectedNode || null;
     const desiredLane = branch ? (source?.lane === 0 ? -1 : 0) : (source?.lane ?? 0);
     const desiredColumn = (source?.column ?? -1) + 1;
     const slot = findOpenSlot(nodes, desiredLane, desiredColumn);
     const slotPos = getPosition({ lane: slot.lane, column: slot.column });
     const newAtom = {
       ...buildAtomFromLibrary(item, slot.lane, slot.column),
-      x: slotPos.x,
-      y: slotPos.y,
+      x: options.point?.x ?? slotPos.x,
+      y: options.point?.y ?? slotPos.y,
     };
 
+    recordGraphSnapshot();
     setNodes((current) => [...current, newAtom]);
-    if (source) {
-      setEdges((current) => [...current, { from: source.id, to: newAtom.id }]);
+    if (source && options.connect !== false) {
+      const connection = buildConnection([...nodes, newAtom], edges, source.id, newAtom.id);
+      if (connection.ok) setEdges((current) => [...current, connection.edge]);
+      else setNotice(connection.message);
     }
     setSelectedNodeId(newAtom.id);
+    setQuickAddNodeId(null);
+    setQuickAddQuery('');
     setNotice(`${newAtom.title} added to the ${branch ? 'branch' : 'main'} path.`);
     setRunState('Edited');
   };
@@ -878,6 +1169,92 @@ export default function AutomationAtomBuilder({
           ? {
               ...node,
               [field]: value,
+            }
+          : node
+      )
+    );
+    setRunState('Edited');
+  };
+
+  const updateSelectedNativeConfig = (patch) => {
+    if (!selectedNode) return;
+    if (!planRule.editable && activePlanName === 'Starter') {
+      setNotice('Starter does not include Atom Builder editing. Switch to Pro or Enterprise to customize each atom.');
+      return;
+    }
+
+    setNodes((current) =>
+      current.map((node) =>
+        node.id === selectedNode.id
+          ? {
+              ...node,
+              config: {
+                ...(node.config || {}),
+                ...patch,
+              },
+            }
+          : node
+      )
+    );
+    setRunState('Edited');
+  };
+
+  const updateSelectedBranchGroup = (patch) => {
+    if (!selectedNode) return;
+    const current = {
+      ...(selectedNode.config || {}),
+      groups: [
+        {
+          ...((selectedNode.config?.groups || [])[0] || {}),
+          ...patch,
+        },
+      ],
+    };
+    setNodes((nodesList) =>
+      nodesList.map((node) =>
+        node.id === selectedNode.id
+          ? {
+              ...node,
+              config: current,
+            }
+          : node
+      )
+    );
+    setRunState('Edited');
+  };
+
+  const updateSelectedBranchCondition = (index, patch) => {
+    if (!selectedNode) return;
+    const group = (selectedNode.config?.groups || [])[0] || { groupOperator: 'and', conditions: [] };
+    const conditions = (group.conditions || []).map((cond, idx) => (idx === index ? { ...cond, ...patch } : cond));
+    const config = {
+      ...(selectedNode.config || {}),
+      groups: [{ ...group, conditions }],
+    };
+    setNodes((nodesList) =>
+      nodesList.map((node) =>
+        node.id === selectedNode.id
+          ? {
+              ...node,
+              config,
+            }
+          : node
+      )
+    );
+    setRunState('Edited');
+  };
+
+  const updateSelectedMapping = (key, value) => {
+    if (!selectedNode) return;
+    const mapping = { ...((selectedNode.config?.mapping || {})) };
+    if (key) mapping[key] = value;
+    const config = { ...(selectedNode.config || {}), mapping };
+    setNodes((nodesList) =>
+      nodesList.map((node) =>
+        node.id === selectedNode.id
+          ? {
+              ...node,
+              config,
             }
           : node
       )
@@ -909,10 +1286,13 @@ export default function AutomationAtomBuilder({
   };
 
   const refreshSavedFlows = async () => {
-    if (!hasSupabaseConfig) return;
+    if (!canUseWorkspaceBackend) {
+      setSavedFlows([]);
+      return;
+    }
     setFlowsBusy(true);
     try {
-      const flows = await listAutomationFlows();
+      const flows = await listAutomationFlows({ organizationId });
       setSavedFlows(flows);
     } catch (error) {
       setNotice(error.message || 'Failed to load saved automations.');
@@ -922,18 +1302,182 @@ export default function AutomationAtomBuilder({
   };
 
   const refreshRuns = async (targetFlowId = flowId) => {
-    if (!hasSupabaseConfig || !targetFlowId) {
+    if (!canUseWorkspaceBackend || !targetFlowId) {
       setBackendRuns([]);
       return;
     }
     setRunsBusy(true);
     try {
-      const runs = await listAutomationRuns(targetFlowId);
+      let runs = [];
+      try {
+        const native = await listNativeExecutions(targetFlowId, { organizationId });
+        runs = native.map((run) => ({ ...run, flow_name: flowName, native: true }));
+      } catch (error) {
+        const legacy = await listAutomationRuns(targetFlowId, { organizationId });
+        runs = legacy.map((run) => ({ ...run, native: false }));
+      }
       setBackendRuns(runs);
     } catch (error) {
       setNotice(error.message || 'Failed to load automation run history.');
     } finally {
       setRunsBusy(false);
+    }
+  };
+
+  const refreshConnections = async () => {
+    if (!canUseWorkspaceBackend) {
+      setConnections(null);
+      return;
+    }
+    setConnBusy(true);
+    try {
+      const data = await listConnectionsAndCredentials();
+      setConnections(data);
+    } catch (error) {
+      setNotice(error.message || 'Failed to load connections.');
+    } finally {
+      setConnBusy(false);
+    }
+  };
+
+  const refreshApprovals = async () => {
+    if (!canUseWorkspaceBackend) {
+      setApprovals([]);
+      return;
+    }
+    setApprovalsBusy(true);
+    try {
+      const data = await listApprovals({ organizationId, status: 'pending' });
+      setApprovals(data);
+    } catch (error) {
+      setApprovals([]);
+    } finally {
+      setApprovalsBusy(false);
+    }
+  };
+
+  const handleDecideApproval = async (approvalId, action) => {
+    if (!canUseWorkspaceBackend) return;
+    try {
+      await decideApproval({ approvalId, action });
+      setNotice(`Approval ${action === 'approve' ? 'approved' : 'rejected'}.`);
+      refreshApprovals();
+    } catch (error) {
+      setNotice(error.message || 'Failed to update approval.');
+    }
+  };
+
+  const refreshTriggers = async () => {
+    if (!canUseWorkspaceBackend) {
+      setSchedules([]);
+      setWebhooks([]);
+      setVariables([]);
+      setTriggersBusy(false);
+      return;
+    }
+    setTriggersBusy(true);
+    try {
+      const [sch, hooks, vars] = await Promise.all([
+        listSchedules({ organizationId, workflowId: flowId || undefined }),
+        listWebhooks({ organizationId, workflowId: flowId || undefined }),
+        listVariables({ organizationId }),
+      ]);
+      setSchedules(sch);
+      setWebhooks(hooks);
+      setVariables(vars);
+    } catch (error) {
+      setNotice(error.message || 'Failed to load triggers.');
+    } finally {
+      setTriggersBusy(false);
+    }
+  };
+
+  const handleSaveSchedule = async () => {
+    if (!canUseWorkspaceBackend || !scheduleForm) return;
+    try {
+      const row = {
+        id: scheduleForm.id || undefined,
+        organization_id: organizationId,
+        workflow_id: flowId,
+        name: scheduleForm.name || '',
+        trigger_type: scheduleForm.trigger_type || 'interval',
+        interval_seconds: scheduleForm.trigger_type === 'interval' ? Number(scheduleForm.interval_seconds) || 3600 : null,
+        cron_expr: scheduleForm.trigger_type === 'cron' ? scheduleForm.cron_expr || '' : null,
+        schedule_time: scheduleForm.trigger_type === 'time' ? scheduleForm.schedule_time || '09:00' : null,
+        timezone: scheduleForm.timezone || 'UTC',
+        enabled: scheduleForm.enabled !== false,
+      };
+      if (!flowId) {
+        setNotice('Save the flow first, then create a schedule.');
+        return;
+      }
+      await upsertSchedule(row);
+      setNotice('Schedule saved.');
+      setScheduleForm(null);
+      refreshTriggers();
+    } catch (error) {
+      setNotice(error.message || 'Failed to save schedule.');
+    }
+  };
+
+  const handleSaveWebhook = async () => {
+    if (!canUseWorkspaceBackend || !webhookForm) return;
+    try {
+      if (!flowId) {
+        setNotice('Save the flow first, then create a webhook.');
+        return;
+      }
+      await createWebhook({ organizationId, workflowId: flowId, name: webhookForm.name || '', method: webhookForm.method || 'POST' });
+      setNotice('Webhook created.');
+      setWebhookForm(null);
+      refreshTriggers();
+    } catch (error) {
+      setNotice(error.message || 'Failed to create webhook.');
+    }
+  };
+
+  const handleSaveVariable = async () => {
+    if (!canUseWorkspaceBackend || !variableForm) return;
+    try {
+      let payload = null;
+      try {
+        payload = JSON.parse(String(variableForm.value ?? ''));
+      } catch {
+        payload = String(variableForm.value ?? '');
+      }
+      await upsertVariable({
+        organization_id: organizationId,
+        key: variableForm.key.trim(),
+        value: { __talValue: payload },
+        value_type: 'string',
+        is_secret: false,
+      });
+      setNotice('Variable saved.');
+      setVariableForm(null);
+      refreshTriggers();
+    } catch (error) {
+      setNotice(error.message || 'Failed to save variable.');
+    }
+  };
+
+  const confirmPendingDelete = async () => {
+    if (!pendingDelete) return;
+    const target = pendingDelete;
+    setPendingDelete(null);
+    try {
+      if (target.kind === 'flow') await deleteCurrentFlowFromBackend();
+      if (target.kind === 'connection') {
+        await deleteConnection(target.id);
+        await refreshConnections();
+        setNotice('Connection deleted.');
+      }
+      if (target.kind === 'variable') {
+        await deleteVariable(target.id);
+        await refreshTriggers();
+        setNotice('Variable deleted.');
+      }
+    } catch (error) {
+      setNotice(error.message || `Could not delete ${target.label}.`);
     }
   };
 
@@ -1002,11 +1546,11 @@ export default function AutomationAtomBuilder({
   };
 
   const saveFlowToBackend = async ({ silent = false } = {}) => {
-    if (!hasSupabaseConfig) {
-      if (!silent) {
-        setNotice('Supabase is not configured yet. Add the project keys to connect a live backend.');
-      }
-      return null;
+    if (!canUseWorkspaceBackend) {
+      const record = saveDraft({ nodes, edges }, { flowId: flowId || 'untitled', workflowId: flowId, flowName, flowSummary, planName: activePlanName });
+      setRunState('Saved locally');
+      if (!silent) setNotice(record.storageError ? 'Local save failed. Browser storage is unavailable.' : 'Saved locally. Sign in to persist this workflow to Supabase.');
+      return flowId;
     }
 
     setSaveBusy(true);
@@ -1022,13 +1566,32 @@ export default function AutomationAtomBuilder({
         planName: activePlanName,
         nodes,
         edges,
+        organizationId,
+        createdBy: currentUserId,
       });
       setFlowId(result.id);
+      let version = null;
+      let versionError = null;
+      try {
+        version = await saveWorkflowVersion(result.id, {
+          name: flowName,
+          summary: flowSummary,
+          nodes,
+          edges,
+          organizationId,
+          createdBy: currentUserId,
+          status: 'draft',
+          changeSummary: 'Saved from Atom Builder',
+        });
+        setWorkflowVersion(version.version);
+      } catch (error) {
+        versionError = error;
+      }
       await refreshSavedFlows();
       await refreshRuns(result.id);
       setRunState('Saved');
       if (!silent) {
-        setNotice('Flow saved to the Supabase backend.');
+        setNotice(versionError ? `Flow saved, but version snapshot failed: ${versionError.message || 'unknown error'}` : `Flow saved as version ${version?.version || 1}.`);
       }
       return result.id;
     } catch (error) {
@@ -1131,8 +1694,8 @@ export default function AutomationAtomBuilder({
     setNotice(`Sending a test event to ${selectedNode.title}...`);
 
     try {
-      if (hasSupabaseConfig) {
-        const nextFlowId = flowId || (await saveFlowToBackend({ silent: true }));
+      if (canUseWorkspaceBackend) {
+        const nextFlowId = await saveFlowToBackend({ silent: true });
         const result = await runAutomationNode({
           flowId: nextFlowId,
           node: selectedNode,
@@ -1147,13 +1710,99 @@ export default function AutomationAtomBuilder({
         await triggerMakeNode(selectedNode);
       }
       setRunState('Connected');
-      setNotice(`${selectedNode.title} test sent to ${hasSupabaseConfig ? 'the Supabase backend' : 'Make'}.`);
+      setNotice(`${selectedNode.title} test sent to ${canUseWorkspaceBackend ? 'the Supabase backend' : 'Make'}.`);
     } catch (error) {
       setRunState('Error');
       setNotice(error.message || 'Make test failed.');
     } finally {
       setRunBusy(false);
     }
+  };
+
+  const applyNativeRunDetail = (execution, nodeRuns, events) => {
+    setExecutionStatus(execution?.status || null);
+    setNativeRuns(
+      Object.fromEntries(
+        (nodeRuns || [])
+          .filter((run) => ['succeeded', 'failed', 'waiting', 'skipped'].includes(run.status))
+          .reverse()
+          .map((run) => [
+            run.node_id,
+            {
+              status: run.status,
+              branch: run.branch,
+              output: run.output,
+              error: run.error,
+              httpStatus: run.http_status,
+              attempt: run.attempt,
+            },
+          ])
+      )
+    );
+
+    const ordered = (nodeRuns || [])
+      .slice()
+      .sort((a, b) => (a.started_at || a.created_at || '').localeCompare(b.started_at || b.created_at || ''));
+
+    const logEntries = ordered
+      .slice()
+      .reverse()
+      .map((run, index) => ({
+        id: `${run.node_id}-${run.attempt}-${run.status}-${index}`,
+        nodeTitle: run.node_title || run.node_id,
+        status: run.status,
+        detail:
+          run.status === 'failed'
+            ? `Attempt ${run.attempt}: ${run.error?.message || run.error || 'Execution failed'}`
+            : run.status === 'succeeded'
+              ? `${run.branch ? `Route ${String(run.branch).toUpperCase()} · ` : ''}${run.output ? JSON.stringify(run.output).slice(0, 160) : 'Completed'}`
+              : `${run.status === 'waiting' ? 'Waiting' : 'Skipped'} · attempt ${run.attempt}`,
+        at: run.finished_at || run.started_at || run.created_at,
+      }));
+
+    if (logEntries.length) {
+      setRunLog(logEntries);
+    } else {
+      setRunLog((events || []).map((event, index) => ({
+        id: `${event.node_id}-event-${index}`,
+        nodeTitle: event.node_id || 'Execution',
+        status: event.level === 'error' ? 'Error' : event.level === 'warn' ? 'Warning' : 'Info',
+        detail: event.message,
+        at: event.created_at,
+      })));
+    }
+  };
+
+  const pollExecution = async (executionId) => {
+    const deadline = Date.now() + 90000;
+    const attempts = Math.max(1, Math.floor(90000 / 1200));
+    for (let i = 0; i < attempts; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      let detail;
+      try {
+        detail = await getExecutionDetail(executionId);
+      } catch (error) {
+        setNotice(error.message || 'Execution polling failed.');
+        break;
+      }
+      if (!detail?.execution) break;
+      applyNativeRunDetail(detail.execution, detail.nodeRuns, detail.events);
+      if (TERMINAL_EXECUTION_STATUSES.has(detail.execution.status)) {
+        if (detail.execution.status === 'completed') {
+          setRunState('Connected');
+          setNotice(`Execution ${executionId.slice(0, 8)} completed successfully.`);
+        } else {
+          setRunState('Error');
+          const msg =
+            detail.execution.error?.message ||
+            (detail.execution.status === 'canceled' ? 'Execution was canceled.' : `Execution ended as ${detail.execution.status}.`);
+          setNotice(msg);
+        }
+        return detail;
+      }
+    }
+    setNotice('Execution is still running. Refresh run history to see its latest state.');
+    return null;
   };
 
   const activatePath = async () => {
@@ -1163,27 +1812,44 @@ export default function AutomationAtomBuilder({
       return;
     }
 
-    const orderedNodes = getExecutionOrder(nodes, edges);
+    if (!runValidation()) return;
+
+    let payload = {};
+    try {
+      payload = manualPayload.trim() ? JSON.parse(manualPayload) : {};
+    } catch (error) {
+      setRunState('Error');
+      setNotice('The manual trigger payload is not valid JSON.');
+      return;
+    }
+
     setRunBusy(true);
+    setRunConsoleOpen(true);
     setRunLog([]);
     setRunState('Running');
-    setNotice('Running the current automation path through the connected Make scenarios...');
+    setExecutionStatus(null);
+    setNativeRuns({});
 
     try {
-      if (hasSupabaseConfig) {
-        const nextFlowId = flowId || (await saveFlowToBackend({ silent: true }));
-        const result = await runAutomationPath({
+      if (canUseWorkspaceBackend) {
+        setNotice('Saving the graph snapshot and starting a native execution...');
+        const nextFlowId = await saveFlowToBackend({ silent: true });
+        if (!nextFlowId) throw new Error('Could not save the flow before running.');
+        const executionId = await runExecutionNative({
           flowId: nextFlowId,
           nodes,
           edges,
-          flowName,
-          flowSummary,
-          planName: activePlanName,
+          payload,
+          createdBy: currentUserId,
         });
-        applyStepResults(result.steps || []);
-        setActiveRunId(result.runId || null);
+        setActiveRunId(executionId);
+        setActiveRunKind('native');
         await refreshRuns(nextFlowId);
+        setNotice(`Execution ${executionId.slice(0, 8)} running through the native engine...`);
+        await pollExecution(executionId);
       } else {
+        const orderedNodes = getExecutionOrder(nodes, edges);
+        setRunState('Running');
         for (const node of orderedNodes) {
           if (!nodeSupportsMake(node)) {
             pushRunLog({ id: `${node.id}-${Date.now()}`, nodeTitle: node.title, status: 'Logic', detail: 'Routing handled in builder flow' });
@@ -1191,10 +1857,9 @@ export default function AutomationAtomBuilder({
           }
           await triggerMakeNode(node);
         }
+        setRunState('Connected');
+        setNotice('Path run completed through the local browser bridge. Connect Supabase for the native execution engine.');
       }
-
-      setRunState('Connected');
-      setNotice(`Path run completed through ${hasSupabaseConfig ? 'the Supabase backend' : 'the local browser bridge'}. Review responses in the run log.`);
     } catch (error) {
       setRunState('Error');
       setNotice(error.message || 'Path run failed.');
@@ -1204,12 +1869,12 @@ export default function AutomationAtomBuilder({
   };
 
   const loadSavedFlow = async (targetFlowId) => {
-    if (!hasSupabaseConfig) return;
+    if (!canUseWorkspaceBackend) return;
     setFlowsBusy(true);
     try {
-      const payload = await loadAutomationFlow(targetFlowId);
+      const payload = await loadAutomationFlow(targetFlowId, { organizationId });
       const restoredNodes = payload.nodes.map(restoreNode);
-      const restoredEdges = payload.edges.map((edge) => ({ from: edge.from_node_id, to: edge.to_node_id }));
+      const restoredEdges = payload.edges.map((edge) => ({ id: edge.id, from: edge.from_node_id, to: edge.to_node_id, sourcePortId: edge.source_port_id, targetPortId: edge.target_port_id, label: edge.label, sortOrder: edge.sort_order }));
       setFlowId(payload.flow.id);
       setActivePlanName(payload.flow.plan_name || 'Pro');
       setFlowName(payload.flow.name);
@@ -1218,9 +1883,17 @@ export default function AutomationAtomBuilder({
       setEdges(restoredEdges);
       setSelectedNodeId(restoredNodes[0]?.id || null);
       setRunState('Loaded');
+      setSimulationResult(null);
+      setWorkflowVersion(null);
       setCanvasMode('inspect');
       setNotice(`Loaded ${payload.flow.name} from the backend.`);
       setActiveRunId(null);
+      setActiveRunKind('legacy');
+      setExecutionStatus(null);
+      setNativeRuns({});
+      setValidationOpen(false);
+      setRunConsoleOpen(false);
+      resetGraphHistory();
       await refreshRuns(payload.flow.id);
     } catch (error) {
       setNotice(error.message || 'Failed to load this automation.');
@@ -1230,13 +1903,13 @@ export default function AutomationAtomBuilder({
   };
 
   const deleteCurrentFlowFromBackend = async () => {
-    if (!flowId || !hasSupabaseConfig) {
+    if (!flowId || !canUseWorkspaceBackend) {
       setNotice('Save the flow first before trying to delete it from the backend.');
       return;
     }
     setFlowsBusy(true);
     try {
-      await deleteAutomationFlow(flowId);
+      await deleteAutomationFlow(flowId, { organizationId });
       await refreshSavedFlows();
       createFreshFlow(activePlanName === 'Starter' ? 'Pro' : activePlanName);
       setNotice('Saved automation deleted from the backend.');
@@ -1250,32 +1923,66 @@ export default function AutomationAtomBuilder({
   const duplicateCurrentFlow = () => {
     setFlowId(null);
     setFlowName((current) => `${current} Copy`);
+    setWorkflowVersion(null);
     setRunState('Edited');
     setNotice('This draft is now detached from the saved flow. Save backend to create a duplicate.');
   };
 
   const inspectRun = async (runId) => {
-    if (!hasSupabaseConfig) return;
+    if (!canUseWorkspaceBackend) return;
     setRunsBusy(true);
+    setRunConsoleOpen(true);
     try {
-      const steps = await listAutomationRunSteps(runId);
-      setActiveRunId(runId);
-      setRunLog(
-        steps
-          .slice()
-          .reverse()
-          .map((step, index) => ({
-            id: `${step.node_id}-${runId}-${index}`,
-            nodeTitle: step.node_title,
-            status: step.status,
-            detail: step.response_preview || 'No response preview',
-          }))
-      );
-      setNotice('Loaded backend run details into the execution log.');
+      const target = backendRuns.find((run) => run.id === runId);
+      if (target?.native) {
+        setActiveRunId(runId);
+        setActiveRunKind('native');
+        const detail = await getExecutionDetail(runId);
+        applyNativeRunDetail(detail.execution, detail.nodeRuns, detail.events);
+        setNotice('Loaded native execution details into the execution log.');
+      } else {
+        const steps = await listAutomationRunSteps(runId);
+        setActiveRunId(runId);
+        setActiveRunKind('legacy');
+        setRunLog(
+          steps
+            .slice()
+            .reverse()
+            .map((step, index) => ({
+              id: `${step.node_id}-${runId}-${index}`,
+              nodeTitle: step.node_title,
+              status: step.status,
+              detail: step.response_preview || 'No response preview',
+            }))
+        );
+        setNotice('Loaded backend run details into the execution log.');
+      }
     } catch (error) {
-      setNotice(error.message || 'Failed to inspect this backend run.');
+      setNotice(error.message || 'Failed to inspect this run.');
     } finally {
       setRunsBusy(false);
+    }
+  };
+
+  const handleCancelRun = async (runId) => {
+    if (!canUseWorkspaceBackend) return;
+    try {
+      await cancelExecution(runId);
+      setNotice('Execution canceled.');
+      refreshRuns();
+    } catch (error) {
+      setNotice(error.message || 'Failed to cancel execution.');
+    }
+  };
+
+  const handleRetryRun = async (runId) => {
+    if (!canUseWorkspaceBackend) return;
+    try {
+      await retryExecution(runId);
+      setNotice('Execution retried.');
+      refreshRuns();
+    } catch (error) {
+      setNotice(error.message || 'Failed to retry execution.');
     }
   };
 
@@ -1285,11 +1992,68 @@ export default function AutomationAtomBuilder({
       return;
     }
 
+    recordGraphSnapshot();
     setNodes((current) => current.filter((node) => node.id !== selectedNode.id));
     setEdges((current) => current.filter((edge) => edge.from !== selectedNode.id && edge.to !== selectedNode.id));
     setSelectedNodeId(nodes.find((node) => node.id !== selectedNode.id)?.id || null);
     setNotice(`${selectedNode.title} removed from the path.`);
     setRunState('Edited');
+  };
+
+  const copySelectedNodes = () => {
+    if (!selectedNode) return;
+    clipboardRef.current = { nodes: [cloneGraphNodes([selectedNode])[0]], edges: [] };
+    setNotice(`${selectedNode.title} copied.`);
+  };
+
+  const pasteNodes = () => {
+    const clip = clipboardRef.current;
+    if (!clip?.nodes?.length || !planRule.editable) return;
+    const idMap = new Map();
+    const pasted = clip.nodes.map((node, index) => {
+      const id = `${node.id}-copy-${Date.now().toString(36)}-${index}`;
+      idMap.set(node.id, id);
+      return { ...cloneGraphNodes([node])[0], id, title: `${node.title} Copy`, x: getPosition(node).x + 40, y: getPosition(node).y + 40 };
+    });
+    recordGraphSnapshot();
+    setNodes((current) => [...current, ...pasted]);
+    setEdges((current) => [...current, ...clip.edges.map((edge) => ({ ...edge, id: `${edge.id || 'edge'}-copy-${Date.now().toString(36)}`, from: idMap.get(edge.from), to: idMap.get(edge.to) }))]);
+    setSelectedNodeId(pasted[pasted.length - 1].id);
+    setRunState('Edited');
+    setNotice(`${pasted.length} atom${pasted.length === 1 ? '' : 's'} pasted.`);
+  };
+
+  const duplicateSelectedNode = () => {
+    if (!selectedNode || !planRule.editable) return;
+    if (liveAtomCount >= planRule.atoms) {
+      setNotice(`${activePlanName} is capped at ${planRule.atoms} live atoms.`);
+      return;
+    }
+    const slot = findOpenSlot(nodes, selectedNode.lane, selectedNode.column + 1);
+    const position = getPosition({ lane: slot.lane, column: slot.column });
+    const copy = {
+      ...selectedNode,
+      id: `${selectedNode.id}-copy-${Math.random().toString(36).slice(2, 7)}`,
+      title: `${selectedNode.title} Copy`,
+      lane: slot.lane,
+      column: slot.column,
+      x: position.x,
+      y: position.y,
+      config: selectedNode.config ? structuredClone(selectedNode.config) : selectedNode.config,
+      makeConfig: selectedNode.makeConfig ? structuredClone(selectedNode.makeConfig) : selectedNode.makeConfig,
+    };
+    recordGraphSnapshot();
+    setNodes((current) => [...current, copy]);
+    setSelectedNodeId(copy.id);
+    setRunState('Edited');
+    setNotice(`${selectedNode.title} duplicated.`);
+  };
+
+  const removeEdge = (edgeToRemove) => {
+    recordGraphSnapshot();
+    setEdges((current) => current.filter((edge) => edge !== edgeToRemove));
+    setRunState('Edited');
+    setNotice('Connection removed.');
   };
 
   const activePlanCard = plans.find((plan) => plan.name === activePlanName);
@@ -1298,6 +2062,7 @@ export default function AutomationAtomBuilder({
     const point = toCanvasPoint(event.clientX, event.clientY);
     if (!point) return;
     const pos = getPosition(node);
+    recordGraphSnapshot();
     setSelectedNodeId(node.id);
     setDragState({
       id: node.id,
@@ -1306,12 +2071,12 @@ export default function AutomationAtomBuilder({
     });
   };
 
-  const startConnection = (event, nodeId) => {
+  const startConnection = (event, nodeId, sourcePortId = null) => {
     event.stopPropagation();
     const sourceNode = nodes.find((node) => node.id === nodeId);
     if (!sourceNode) return;
     setSelectedNodeId(nodeId);
-    setConnectState({ sourceId: nodeId });
+    setConnectState({ sourceId: nodeId, sourcePortId });
     setPointerPos(getPortPosition(sourceNode, 'right'));
     setNotice('Choose a target module to create a connection.');
   };
@@ -1319,17 +2084,17 @@ export default function AutomationAtomBuilder({
   const completeConnection = (event, targetId) => {
     event.stopPropagation();
     if (!connectState) return;
-    if (connectState.sourceId === targetId) {
-      setNotice('Choose a different target module.');
+    const connection = buildConnection(nodes, edges, connectState.sourceId, targetId, { sourcePortId: connectState.sourcePortId });
+    if (!connection.ok) {
+      setNotice(connection.message);
+      if (connection.code === 'duplicate_connection' || connection.code === 'workflow_cycle') {
+        setConnectState(null);
+        setPointerPos(null);
+      }
       return;
     }
-    if (edges.some((edge) => edge.from === connectState.sourceId && edge.to === targetId)) {
-      setNotice('These modules are already connected.');
-      setConnectState(null);
-      setPointerPos(null);
-      return;
-    }
-    setEdges((current) => [...current, { from: connectState.sourceId, to: targetId }]);
+    recordGraphSnapshot();
+    setEdges((current) => [...current, connection.edge]);
     setConnectState(null);
     setPointerPos(null);
     setCanvasMode('build');
@@ -1345,13 +2110,13 @@ export default function AutomationAtomBuilder({
       if (!point) return;
 
       if (dragState) {
+        const position = snapPoint({ x: point.x - dragState.offsetX, y: point.y - dragState.offsetY }, 10);
         setNodes((current) =>
           current.map((node) =>
             node.id === dragState.id
               ? {
                   ...node,
-                  x: point.x - dragState.offsetX,
-                  y: point.y - dragState.offsetY,
+                  ...position,
                 }
               : node
           )
@@ -1381,11 +2146,49 @@ export default function AutomationAtomBuilder({
 
   useEffect(() => {
     refreshSavedFlows();
-  }, []);
+  }, [organizationId]);
 
   useEffect(() => {
-    refreshBackendStatus({ quiet: true });
-  }, []);
+    if (canUseWorkspaceBackend) refreshBackendStatus({ quiet: true });
+  }, [canUseWorkspaceBackend]);
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      const target = event.target;
+      const editing = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target?.isContentEditable;
+      const command = event.metaKey || event.ctrlKey;
+      if (command && event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) redoGraph();
+        else undoGraph();
+        return;
+      }
+      if (!editing && command && event.key.toLowerCase() === 'c' && selectedNode) {
+        event.preventDefault();
+        copySelectedNodes();
+        return;
+      }
+      if (!editing && command && event.key.toLowerCase() === 'v') {
+        event.preventDefault();
+        pasteNodes();
+        return;
+      }
+      if (!editing && (event.key === 'Backspace' || event.key === 'Delete') && selectedNode) {
+        event.preventDefault();
+        removeSelectedNode();
+      }
+      if (!editing && command && event.key.toLowerCase() === 'd' && selectedNode) {
+        event.preventDefault();
+        duplicateSelectedNode();
+      }
+      if (!editing && command && event.key === 'Enter') {
+        event.preventDefault();
+        activatePath();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  });
 
   useEffect(() => {
     if (flowId) {
@@ -1394,10 +2197,25 @@ export default function AutomationAtomBuilder({
   }, [flowId]);
 
   useEffect(() => {
+    if (!managementOpen) return;
+    refreshSavedFlows();
+    refreshConnections();
+    refreshApprovals();
+    refreshTriggers();
+  }, [managementOpen]);
+
+  useEffect(() => {
     setNodes((current) => current.map(applyPresetToNode));
   }, []);
 
-  const immersiveMode = fullScreen || contextLabel === 'Atom Builder' || contextLabel === 'Admin QA';
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      saveDraft({ nodes, edges }, { flowId: flowId || 'untitled', flowName, flowSummary, planName: activePlanName });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [nodes, edges, flowId, flowName, flowSummary, activePlanName]);
+
+  const immersiveMode = fullScreen || contextLabel === 'Admin QA';
   const wrapperPadding = immersiveMode
     ? '0'
     : embedded
@@ -1489,7 +2307,7 @@ export default function AutomationAtomBuilder({
           </div>
         </div>
 
-        <div style={{ marginBottom: 18, display: 'flex', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap', alignItems: 'end' }}>
+        {!embedded && <div style={{ marginBottom: 18, display: 'flex', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap', alignItems: 'end' }}>
           <div style={{ minWidth: 280, flex: '1 1 520px' }}>
             <div style={{ fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 38, lineHeight: 1.02, fontWeight: 800, color: '#fff', letterSpacing: '-0.04em', marginBottom: 8 }}>
               {adminMode ? 'Validate automation flows before customers use them.' : 'Atom Builder for paid automation teams.'}
@@ -1508,7 +2326,7 @@ export default function AutomationAtomBuilder({
               </div>
             ))}
           </div>
-        </div>
+        </div>}
 
           <div
             className="builder-layout"
@@ -1526,8 +2344,8 @@ export default function AutomationAtomBuilder({
             <div style={{ padding: '18px 18px 14px', borderBottom: `1px solid ${BUILDER_BORD}` }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <div>
-                  <div style={{ fontFamily: 'Bricolage Grotesque, sans-serif', color: '#fff', fontSize: 18, fontWeight: 700 }}>Modules</div>
-                  <div style={{ fontFamily: 'Manrope, sans-serif', color: 'rgba(255,255,255,0.5)', fontSize: 12, marginTop: 4 }}>Pick agents, apps, and logic blocks for the next step.</div>
+                  <div style={{ fontFamily: 'Bricolage Grotesque, sans-serif', color: '#fff', fontSize: 18, fontWeight: 700 }}>Atoms</div>
+                  <div style={{ fontFamily: 'Manrope, sans-serif', color: 'rgba(255,255,255,0.5)', fontSize: 12, marginTop: 4 }}>Click or drag an Atom into the workflow.</div>
                 </div>
                 <div style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: `1px solid ${BUILDER_BORD}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Filter size={15} color="rgba(255,255,255,0.72)" />
@@ -1538,7 +2356,7 @@ export default function AutomationAtomBuilder({
                 <input
                   value={libraryQuery}
                   onChange={(event) => setLibraryQuery(event.target.value)}
-                  placeholder="Find module..."
+                  placeholder="Search Atoms..."
                   style={{ width: '100%', borderRadius: 12, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.04)', color: '#fff', padding: '10px 12px 10px 36px', fontFamily: 'Manrope, sans-serif', fontSize: 13, outline: 'none' }}
                 />
               </div>
@@ -1578,7 +2396,14 @@ export default function AutomationAtomBuilder({
                     {group.items.map((item) => (
                       <button
                         key={item.id}
+                        type="button"
+                        draggable={planRule.editable}
+                        onDragStart={(event) => {
+                          event.dataTransfer.setData('application/x-ascentra-atom', item.id);
+                          event.dataTransfer.effectAllowed = 'copy';
+                        }}
                         onClick={() => appendAtom(item)}
+                        onContextMenu={(event) => { event.preventDefault(); appendAtom(item); }}
                         style={{
                           width: '100%',
                           textAlign: 'left',
@@ -1609,7 +2434,7 @@ export default function AutomationAtomBuilder({
           </aside>
 
           <section style={{ borderRadius: 20, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(10,14,22,0.82)', boxShadow: '0 24px 60px rgba(0,0,0,0.28)', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '16px 18px', borderBottom: `1px solid ${BUILDER_BORD}`, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div className="builder-scenario-header" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '16px 18px', borderBottom: `1px solid ${BUILDER_BORD}`, flexWrap: 'wrap', alignItems: 'center' }}>
               <div style={{ minWidth: 260, flex: '1 1 320px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
                   <div style={{ padding: '5px 9px', borderRadius: 999, background: 'rgba(255,255,255,0.04)', border: `1px solid ${BUILDER_BORD}`, color: 'rgba(255,255,255,0.72)', fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase' }}>
@@ -1637,8 +2462,8 @@ export default function AutomationAtomBuilder({
                   style={{ width: '100%', resize: 'none', background: 'transparent', border: 'none', outline: 'none', color: 'rgba(255,255,255,0.55)', fontFamily: 'Manrope, sans-serif', fontSize: 13, lineHeight: 1.5 }}
                 />
               </div>
-              <div style={{ display: 'grid', gap: 10, minWidth: 300 }}>
-                <div style={{ display: 'inline-flex', padding: 4, borderRadius: 999, background: 'rgba(255,255,255,0.04)', border: `1px solid ${BUILDER_BORD}`, alignSelf: 'end', justifySelf: 'end' }}>
+              <div className="builder-scenario-controls" style={{ display: 'grid', gap: 10, minWidth: 300 }}>
+                <div className="builder-plan-toggle" style={{ display: 'inline-flex', padding: 4, borderRadius: 999, background: 'rgba(255,255,255,0.04)', border: `1px solid ${BUILDER_BORD}`, alignSelf: 'end', justifySelf: 'end' }}>
                   {Object.keys(PLAN_RULES).map((planName) => {
                     const active = planName === activePlanName;
                     return (
@@ -1662,30 +2487,35 @@ export default function AutomationAtomBuilder({
                     );
                   })}
                 </div>
-                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                <div className="builder-scenario-actions" style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                   <button onClick={() => createFreshFlow(activePlanName === 'Starter' ? 'Pro' : activePlanName)} style={{ padding: '11px 14px', borderRadius: 12, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.04)', color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                     <FolderOpen size={14} /> New draft
                   </button>
-                  <button onClick={() => setNotice('Undo stack is staged for the next interaction pass.')} style={{ width: 40, height: 40, borderRadius: 12, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.04)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                  <button onClick={undoGraph} disabled={!canUndo} title="Undo (⌘Z)" aria-label="Undo" style={{ width: 40, height: 40, borderRadius: 12, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.04)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: canUndo ? 'pointer' : 'not-allowed', opacity: canUndo ? 1 : 0.38 }}>
                     <Undo2 size={15} />
                   </button>
-                  <button onClick={() => setNotice('Redo stack is staged for the next interaction pass.')} style={{ width: 40, height: 40, borderRadius: 12, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.04)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                  <button onClick={redoGraph} disabled={!canRedo} title="Redo (⇧⌘Z)" aria-label="Redo" style={{ width: 40, height: 40, borderRadius: 12, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.04)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: canRedo ? 'pointer' : 'not-allowed', opacity: canRedo ? 1 : 0.38 }}>
                     <Redo2 size={15} />
                   </button>
-                  <button onClick={() => setNotice('Preview run simulated. Connectors, approvals, and agent prompts are ready to present in sales demos today.')} style={{ padding: '11px 14px', borderRadius: 12, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.04)', color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                    <Eye size={14} /> {adminMode ? 'QA preview' : 'Preview'}
+                  <button onClick={runLocalSimulation} style={{ padding: '11px 14px', borderRadius: 12, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(168,85,247,0.08)', color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                    <Sparkles size={14} /> Simulate
                   </button>
-                  <button onClick={() => saveFlowToBackend()} disabled={saveBusy} style={{ padding: '11px 14px', borderRadius: 12, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.04)', color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 8, cursor: saveBusy ? 'wait' : 'pointer', opacity: saveBusy ? 0.72 : 1 }}>
-                    <Database size={14} /> {saveBusy ? 'Saving...' : 'Save backend'}
+                  <button onClick={() => runValidation()} style={{ padding: '11px 14px', borderRadius: 12, border: `1px solid ${validation.valid ? BUILDER_BORD : 'rgba(248,113,113,0.4)'}`, background: validation.valid ? 'rgba(255,255,255,0.04)' : 'rgba(248,113,113,0.08)', color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                    <Check size={14} /> Validate{validation.errors ? ` · ${validation.errors}` : ''}
                   </button>
-                  <button onClick={duplicateCurrentFlow} style={{ padding: '11px 14px', borderRadius: 12, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.04)', color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                    <CopyPlus size={14} /> Duplicate
+                  <button onClick={() => saveFlowToBackend().catch(() => {})} disabled={saveBusy} style={{ padding: '11px 14px', borderRadius: 12, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.04)', color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 8, cursor: saveBusy ? 'wait' : 'pointer', opacity: saveBusy ? 0.72 : 1 }}>
+                    <Database size={14} /> {saveBusy ? 'Saving...' : 'Save'}
                   </button>
-                  <button onClick={() => appendAtom(LOGIC_BLOCKS[0], true)} style={{ padding: '11px 14px', borderRadius: 12, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.04)', color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                    <Plus size={14} /> Branch
+                  <button onClick={() => setManagementOpen((open) => !open)} aria-expanded={managementOpen} style={{ padding: '11px 14px', borderRadius: 12, border: `1px solid ${BUILDER_BORD}`, background: managementOpen ? `${accent}14` : 'rgba(255,255,255,0.04)', color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                    <Settings2 size={14} /> More
                   </button>
+                  {runBusy && canUseWorkspaceBackend && activeRunId && (
+                    <button onClick={() => handleCancelRun(activeRunId)} style={{ padding: '11px 14px', borderRadius: 12, border: '1px solid rgba(248,113,113,0.45)', background: 'rgba(248,113,113,0.1)', color: '#fca5a5', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                      <X size={14} /> Stop
+                    </button>
+                  )}
                   <button onClick={activatePath} disabled={runBusy} style={{ padding: '11px 15px', borderRadius: 12, border: 'none', background: accent, color: '#000', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 800, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 8, cursor: runBusy ? 'wait' : 'pointer', boxShadow: '0 10px 28px rgba(0,201,167,0.26)', opacity: runBusy ? 0.72 : 1 }}>
-                    <Play size={14} /> {runBusy ? 'Running...' : planRule.editable ? 'Activate path' : 'Preview path'}
+                    <Play size={14} /> {runBusy ? 'Running...' : planRule.editable ? 'Run' : 'Path locked'}
                   </button>
                 </div>
               </div>
@@ -1698,6 +2528,7 @@ export default function AutomationAtomBuilder({
                     { label: planRule.editable ? `${liveAtomCount}/${planRule.atoms} live atoms` : 'Demo only', icon: planRule.editable ? Boxes : Lock },
                     { label: activePlanCard?.vals?.[9] || planRule.label, icon: planRule.editable ? Crown : Eye },
                     { label: 'Approvals + integrations', icon: Settings2 },
+                    { label: workflowVersion ? `Version ${workflowVersion}` : 'Draft snapshot', icon: History },
                   ].map((pill) => (
                     <div key={pill.label} style={{ padding: '8px 12px', borderRadius: 999, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.035)', color: 'rgba(255,255,255,0.78)', fontFamily: 'Manrope, sans-serif', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                       <pill.icon size={13} color={accent} /> {pill.label}
@@ -1708,22 +2539,107 @@ export default function AutomationAtomBuilder({
                   <button onClick={() => setZoom((value) => Math.max(70, value - 10))} style={{ width: 34, height: 34, borderRadius: 10, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.035)', color: '#fff', cursor: 'pointer' }}>-</button>
                   <div style={{ minWidth: 58, height: 34, borderRadius: 10, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.035)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.76)', fontFamily: 'JetBrains Mono, monospace', fontSize: 12 }}>{zoom}%</div>
                   <button onClick={() => setZoom((value) => Math.min(140, value + 10))} style={{ width: 34, height: 34, borderRadius: 10, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.035)', color: '#fff', cursor: 'pointer' }}>+</button>
+                  <button onClick={fitWorkflow} style={{ height: 34, padding: '0 11px', borderRadius: 10, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.035)', color: '#fff', cursor: 'pointer', fontFamily: 'Manrope, sans-serif', fontSize: 11 }}>Fit</button>
                 </div>
               </div>
 
-              <div style={{ position: 'relative', height: 760, borderRadius: 24, overflow: 'hidden', background: 'linear-gradient(145deg, #d4ccd7, #bdb5c5)' }}>
+              <div className="builder-canvas-toolbar">
+                <div className="builder-canvas-toolbar__group">
+                  {[
+                    { id: 'build', label: 'Build', icon: Boxes },
+                    { id: 'connect', label: 'Connect', icon: Link2 },
+                    { id: 'inspect', label: 'Inspect', icon: Settings2 },
+                  ].map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="builder-canvas-toolbar__button"
+                      data-active={canvasMode === item.id}
+                      onClick={() => setCanvasMode(item.id)}
+                    >
+                      <item.icon size={14} color={canvasMode === item.id ? accent : 'rgba(255,255,255,0.7)'} />
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="builder-canvas-toolbar__group">
+                  <div className="builder-canvas-toolbar__pill">{nodes.length} nodes</div>
+                  <div className="builder-canvas-toolbar__pill">{edges.length} routes</div>
+                  <div className="builder-canvas-toolbar__pill">{connectState ? 'Pick a destination' : 'Canvas focused'}</div>
+                </div>
+              </div>
+
+              {validationOpen && (
+                <div className="builder-validation" data-valid={validation.valid} role="status">
+                  <div>
+                    <strong>{validation.valid ? 'Ready to run' : `${validation.errors} issue${validation.errors === 1 ? '' : 's'} to fix`}</strong>
+                    <span>{validation.valid ? 'The graph and required Atom configuration passed validation.' : 'Select an issue to jump to the Atom that needs attention.'}</span>
+                  </div>
+                  <div className="builder-validation__issues">
+                    {validation.issues.slice(0, 5).map((entry, index) => (
+                      <button key={`${entry.code}-${entry.nodeId || index}`} type="button" onClick={() => { if (entry.nodeId) { setSelectedNodeId(entry.nodeId); setInspectorTab('settings'); } }}>
+                        <span data-severity={entry.severity}>{entry.severity === 'warning' ? 'Warning' : 'Fix'}</span>{entry.message}
+                      </button>
+                    ))}
+                  </div>
+                  <button type="button" className="builder-validation__close" onClick={() => setValidationOpen(false)} aria-label="Close validation"><X size={14} /></button>
+                </div>
+              )}
+
+              {simulationResult && (
+                <div className="builder-simulation" role="status">
+                  <div className="builder-simulation__header">
+                    <div>
+                      <strong>{simulationResult.ok ? 'Local simulation complete' : 'Simulation stopped'}</strong>
+                      <span>{simulationResult.ok ? `${simulationResult.trace.length} evaluated · ${simulationResult.boundaries.length} external boundaries` : 'Resolve the validation issues before simulating.'}</span>
+                    </div>
+                    <button type="button" onClick={() => setSimulationResult(null)} aria-label="Close simulation"><X size={14} /></button>
+                  </div>
+                  <div className="builder-simulation__trace">
+                    {simulationResult.trace.slice(0, 8).map((entry, index) => {
+                      const node = nodes.find((candidate) => candidate.id === entry.nodeId);
+                      return (
+                        <div key={`${entry.nodeId || 'simulation'}-${index}`} data-status={entry.status}>
+                          <span>{node?.title || entry.nodeId || 'Simulation'}</span>
+                          <strong>{entry.status}</strong>
+                          {entry.reason && <small>{entry.reason}</small>}
+                        </div>
+                      );
+                    })}
+                    {!simulationResult.trace.length && <div data-status="error"><span>No executable route</span><strong>Waiting</strong><small>Add a trigger and connect the first Atom.</small></div>}
+                  </div>
+                  {simulationResult.boundaries.length > 0 && <div className="builder-simulation__boundary">External calls are not executed in local mode. Use Run with the native engine when the workspace is connected.</div>}
+                </div>
+              )}
+
+              <div className="builder-stage" style={{ height: canvasHeight, minHeight: 520 }}>
                 <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(140deg, rgba(255,255,255,0.14), rgba(255,255,255,0))' }} />
                 <div
                   ref={canvasRef}
+                  onDragOver={(event) => {
+                    if (!event.dataTransfer.types.includes('application/x-ascentra-atom')) return;
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = 'copy';
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    const atomId = event.dataTransfer.getData('application/x-ascentra-atom');
+                    const item = paletteItems.find((entry) => entry.id === atomId);
+                    const point = toCanvasPoint(event.clientX, event.clientY);
+                    if (item && point) appendAtom(item, false, { point, connect: false });
+                  }}
                   onClick={() => {
                     if (connectState) {
                       setConnectState(null);
                       setPointerPos(null);
                       setCanvasMode('build');
                       setNotice('Connection cancelled.');
+                    } else {
+                      setSelectedNodeId(null);
+                      setCanvasMode('build');
                     }
                   }}
-                  style={{ position: 'absolute', left: '4.6%', right: '4.6%', top: '6.5%', bottom: '6.5%', borderRadius: 28, background: 'linear-gradient(180deg, #ffffff, #f5f1f8)', boxShadow: '0 24px 64px rgba(63,15,85,0.18)', borderBottom: '10px solid #a855f7', overflow: 'hidden' }}
+                  className="builder-stage__canvas"
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 16px', borderBottom: '1px solid rgba(90,82,110,0.08)', background: 'linear-gradient(180deg, rgba(255,255,255,0.96), rgba(246,242,251,0.92))' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -1738,96 +2654,17 @@ export default function AutomationAtomBuilder({
                       </div>
                     </div>
                     <div style={{ display: 'inline-flex', gap: 8 }}>
-                      <button style={{ width: 34, height: 34, borderRadius: 10, border: '1px solid rgba(110,104,128,0.14)', background: '#fff', color: '#4d425d', cursor: 'pointer' }}>
+                      <button type="button" onClick={undoGraph} disabled={!canUndo} aria-label="Undo" style={{ width: 34, height: 34, borderRadius: 10, border: '1px solid rgba(110,104,128,0.14)', background: '#fff', color: '#4d425d', cursor: canUndo ? 'pointer' : 'not-allowed', opacity: canUndo ? 1 : 0.42 }}>
                         <Undo2 size={14} style={{ marginTop: 2 }} />
                       </button>
-                      <button style={{ width: 34, height: 34, borderRadius: 10, border: '1px solid rgba(110,104,128,0.14)', background: '#fff', color: '#4d425d', cursor: 'pointer' }}>
+                      <button type="button" onClick={redoGraph} disabled={!canRedo} aria-label="Redo" style={{ width: 34, height: 34, borderRadius: 10, border: '1px solid rgba(110,104,128,0.14)', background: '#fff', color: '#4d425d', cursor: canRedo ? 'pointer' : 'not-allowed', opacity: canRedo ? 1 : 0.42 }}>
                         <Redo2 size={14} style={{ marginTop: 2 }} />
                       </button>
                     </div>
                   </div>
-                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(246,244,250,0.98), rgba(236,233,241,0.98))' }} />
-                  <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(rgba(100,93,120,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(100,93,120,0.05) 1px, transparent 1px)', backgroundSize: '72px 72px' }} />
-                  <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(circle at center, rgba(168,85,247,0.06) 0, rgba(168,85,247,0.02) 24%, transparent 54%)' }} />
-
-                  <div style={{ position: 'absolute', left: 16, top: 74, display: 'grid', gap: 10, zIndex: 4 }}>
-                    <div style={{ minWidth: 208, padding: '12px 14px', borderRadius: 16, background: 'rgba(255,255,255,0.9)', border: '1px solid rgba(150,136,170,0.18)', boxShadow: '0 18px 36px rgba(39,20,58,0.08)' }}>
-                      <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.16em', color: '#7d6b91', textTransform: 'uppercase', marginBottom: 7 }}>
-                        Builder lab
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                        <div>
-                          <div style={{ color: '#2c2335', fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 14, fontWeight: 800 }}>
-                            {planRule.editable ? 'Live graph ready' : 'Upgrade required'}
-                          </div>
-                          <div style={{ color: 'rgba(73,61,88,0.65)', fontFamily: 'Manrope, sans-serif', fontSize: 11, marginTop: 3 }}>
-                            Drag, connect, and tune your agent path.
-                          </div>
-                        </div>
-                        <div style={{ width: 10, height: 10, borderRadius: '50%', background: planRule.editable ? accent : '#f59e0b', boxShadow: `0 0 0 5px ${planRule.editable ? `${accent}18` : 'rgba(245,158,11,0.18)'}` }} />
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'inline-flex', flexDirection: 'column', gap: 8, padding: 8, borderRadius: 18, background: 'rgba(255,255,255,0.9)', border: '1px solid rgba(150,136,170,0.18)', boxShadow: '0 18px 36px rgba(39,20,58,0.08)' }}>
-                      {[
-                        { id: 'build', label: 'Build', icon: Boxes },
-                        { id: 'connect', label: 'Connect', icon: Link2 },
-                        { id: 'inspect', label: 'Inspect', icon: Settings2 },
-                      ].map((item) => {
-                        const active = canvasMode === item.id;
-                        return (
-                          <button
-                            key={item.id}
-                            onClick={() => setCanvasMode(item.id)}
-                            style={{
-                              width: 108,
-                              padding: '10px 12px',
-                              borderRadius: 12,
-                              border: `1px solid ${active ? `${accent}55` : 'rgba(150,136,170,0.18)'}`,
-                              background: active ? `${accent}14` : 'rgba(255,255,255,0.84)',
-                              color: active ? '#2c2335' : '#5e506f',
-                              fontFamily: 'Bricolage Grotesque, sans-serif',
-                              fontSize: 12,
-                              fontWeight: 700,
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            {item.label}
-                            <item.icon size={14} color={active ? accent : '#7d6b91'} />
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div style={{ position: 'absolute', right: 16, top: 74, display: 'grid', gap: 10, zIndex: 4 }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, padding: 10, borderRadius: 18, background: 'rgba(255,255,255,0.9)', border: '1px solid rgba(150,136,170,0.18)', boxShadow: '0 18px 36px rgba(39,20,58,0.08)' }}>
-                      {[
-                        ['Nodes', `${nodes.length}`],
-                        ['Links', `${edges.length}`],
-                        ['Mode', canvasMode],
-                      ].map(([label, value]) => (
-                        <div key={label} style={{ minWidth: 66 }}>
-                          <div style={{ color: '#2c2335', fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 14, fontWeight: 800 }}>{value}</div>
-                          <div style={{ color: 'rgba(73,61,88,0.62)', fontFamily: 'Manrope, sans-serif', fontSize: 10 }}>{label}</div>
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{ padding: '12px 14px', borderRadius: 16, background: 'rgba(255,255,255,0.9)', border: '1px solid rgba(150,136,170,0.18)', boxShadow: '0 18px 36px rgba(39,20,58,0.08)' }}>
-                      <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.16em', color: '#7d6b91', textTransform: 'uppercase', marginBottom: 8 }}>
-                        Path status
-                      </div>
-                      <div style={{ color: '#2c2335', fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 14, fontWeight: 800, marginBottom: 5 }}>
-                        {planRule.editable ? 'Ready for live drafting' : 'Guided preview experience'}
-                      </div>
-                      <div style={{ color: 'rgba(73,61,88,0.64)', fontFamily: 'Manrope, sans-serif', fontSize: 11, lineHeight: 1.5 }}>
-                        {connectState ? 'Choose a destination module to finish the connection.' : 'Use the floating controls to shape your graph without leaving the canvas.'}
-                      </div>
-                    </div>
-                  </div>
+                  <div className="builder-stage__gridWash" />
+                  <div className="builder-stage__grid" />
+                  <div className="builder-stage__glow" />
 
                   <div style={{ position: 'absolute', inset: 0, transform: `scale(${zoomScale})`, transformOrigin: 'center center' }}>
                     <svg viewBox="0 0 1280 760" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
@@ -1847,11 +2684,20 @@ export default function AutomationAtomBuilder({
                         const midY = (start.y + end.y) / 2;
                         const path = `M ${start.x} ${start.y} C ${midX - 60} ${start.y}, ${midX + 60} ${end.y}, ${end.x} ${end.y}`;
                         return (
-                          <g key={`${edge.from}-${edge.to}`}>
+                          <g
+                            key={`${edge.from}-${edge.to}-${edge.label || ''}`}
+                            role="button"
+                            tabIndex="0"
+                            aria-label={`Remove connection from ${from.title} to ${to.title}`}
+                            onClick={(event) => { event.stopPropagation(); removeEdge(edge); }}
+                            onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); removeEdge(edge); } }}
+                            style={{ cursor: 'pointer' }}
+                          >
+                            <path d={path} fill="none" stroke="transparent" strokeWidth="22" />
                             <path d={path} fill="none" stroke="url(#edgeStroke)" strokeWidth="4.5" strokeLinecap="round" opacity="0.92" />
                             <rect x={midX - 33} y={midY - 12} rx="10" width="66" height="24" fill="rgba(255,255,255,0.96)" stroke="rgba(150,136,170,0.24)" />
                             <text x={midX} y={midY + 4} textAnchor="middle" style={{ fill: '#5e506f', fontSize: '12px', fontWeight: 700, fontFamily: 'Manrope, sans-serif' }}>
-                              route
+                              {edge.label || 'route'} ×
                             </text>
                           </g>
                         );
@@ -1873,18 +2719,27 @@ export default function AutomationAtomBuilder({
                         const locked = !planRule.editable && activePlanName === 'Starter';
                         const isSource = connectState?.sourceId === node.id;
                         const canReceive = Boolean(connectState && connectState.sourceId !== node.id);
+                        const nodeIssue = validation.issues.find((entry) => entry.nodeId === node.id && entry.severity === 'error');
+                        const nodeRun = nativeRuns[node.id];
+                        const nodeStatus = nodeRun?.status || (nodeIssue ? 'Needs setup' : runBusy ? 'Queued' : 'Ready');
+                        const quickItems = paletteItems.filter((item) => `${item.label} ${item.subtitle}`.toLowerCase().includes(quickAddQuery.trim().toLowerCase())).slice(0, 6);
                         return (
                           <div
                             key={node.id}
                             style={{
                               position: 'absolute',
-                              left: `calc(${(pos.x / 1280) * 100}% - 44px)`,
-                              top: `calc(${(pos.y / 760) * 100}% - 44px)`,
-                              width: 88,
-                              height: 88,
+                              left: `calc(${(pos.x / 1280) * 100}% - 92px)`,
+                              top: `calc(${(pos.y / 760) * 100}% - 38px)`,
+                              width: 184,
+                              height: 76,
+                              zIndex: quickAddNodeId === node.id ? 12 : active ? 5 : 2,
                             }}
                           >
                             <button
+                              type="button"
+                              className="builder-node"
+                              data-active={active}
+                              data-status={nodeStatus.toLowerCase().replace(/\s+/g, '-')}
                               onClick={(event) => {
                                 event.stopPropagation();
                                 setSelectedNodeId(node.id);
@@ -1895,68 +2750,50 @@ export default function AutomationAtomBuilder({
                                 setCanvasMode('build');
                                 startDragging(event, node);
                               }}
-                              style={{ position: 'absolute', inset: 0, border: 'none', background: 'transparent', cursor: dragState?.id === node.id ? 'grabbing' : 'grab', padding: 0 }}
+                               style={{ '--node-color': node.color, cursor: dragState?.id === node.id ? 'grabbing' : 'grab', opacity: node.disabled ? 0.52 : 1 }}
                             >
-                              <div style={{ position: 'absolute', left: 10, right: 10, bottom: -8, height: 16, borderRadius: '50%', background: 'rgba(0,0,0,0.12)', filter: 'blur(7px)' }} />
-                              <div style={{ position: 'absolute', inset: active ? -8 : -2, borderRadius: 999, border: active ? `3px solid ${locked ? '#f59e0b' : BUILDER_ACCENT}` : 'none', opacity: active ? 1 : 0.65 }} />
-                              <div style={{ position: 'absolute', inset: 10, borderRadius: 24, background: `radial-gradient(circle at 35% 28%, rgba(255,255,255,0.9), ${node.color})`, boxShadow: `0 16px 24px ${node.color}30`, display: 'flex', alignItems: 'center', justifyContent: 'center', transform: 'perspective(600px) rotateX(12deg)' }}>
-                                <node.Icon size={24} color="#fff" />
+                              <span className="builder-node__icon"><node.Icon size={18} /></span>
+                              <span className="builder-node__copy">
+                                <strong>{node.title}</strong>
+                                <small>{node.subtitle || nativeKindOf(node)}</small>
+                              </span>
+                              <span className="builder-node__status">{nodeRun?.status === 'succeeded' ? 'Success' : nodeStatus}</span>
+                            </button>
+
+                            {getPorts(node, 'input').map((port, index) => (
+                              <button key={`in-${port.id}`} title={port.label} onClick={(event) => completeConnection(event, node.id)} disabled={!canReceive} style={{ position: 'absolute', left: -10, top: `${18 + index * 20}%`, width: 20, height: 20, borderRadius: '50%', border: '2px solid rgba(82,68,104,0.22)', background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: canReceive ? 'pointer' : 'default', opacity: connectState ? 1 : 0.82, zIndex: 3 }}><div style={{ width: 8, height: 8, borderRadius: '50%', background: canReceive ? BUILDER_ACCENT : 'rgba(92,81,109,0.4)' }} /></button>
+                            ))}
+
+                            {getPorts(node, 'output').map((port, index) => (
+                              <button key={`out-${port.id}`} title={port.label} onClick={(event) => { setCanvasMode('connect'); startConnection(event, node.id, port.id); }} style={{ position: 'absolute', right: -10, top: `${18 + index * 20}%`, width: 20, height: 20, borderRadius: '50%', border: '2px solid rgba(82,68,104,0.22)', background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'crosshair', zIndex: 3 }}><div style={{ width: 8, height: 8, borderRadius: '50%', background: isSource ? BUILDER_ACCENT : 'rgba(92,81,109,0.68)' }} /></button>
+                            ))}
+                            {planRule.editable && (
+                              <button
+                                type="button"
+                                className="builder-node__addNext"
+                                aria-label={`Add next Atom after ${node.title}`}
+                                onClick={(event) => { event.stopPropagation(); setSelectedNodeId(node.id); setQuickAddNodeId((current) => current === node.id ? null : node.id); setQuickAddQuery(''); }}
+                              >
+                                <Plus size={14} />
+                              </button>
+                            )}
+                            {quickAddNodeId === node.id && (
+                              <div className="builder-quick-add" onClick={(event) => event.stopPropagation()}>
+                                <div className="builder-quick-add__search">
+                                  <Search size={13} />
+                                  <input autoFocus value={quickAddQuery} onChange={(event) => setQuickAddQuery(event.target.value)} placeholder="Add next Atom" />
+                                </div>
+                                <div className="builder-quick-add__list">
+                                  {quickItems.map((item) => (
+                                    <button key={item.id} type="button" onClick={() => appendAtom(item, false, { sourceId: node.id })}>
+                                      <span style={{ background: `${item.color}1a`, color: item.color }}><item.Icon size={14} /></span>
+                                      <span><strong>{item.label}</strong><small>{item.subtitle}</small></span>
+                                    </button>
+                                  ))}
+                                  {!quickItems.length && <small className="builder-quick-add__empty">No matching Atoms.</small>}
+                                </div>
                               </div>
-                            </button>
-
-                            <button
-                              onClick={(event) => completeConnection(event, node.id)}
-                              disabled={!canReceive}
-                              style={{
-                                position: 'absolute',
-                                left: -8,
-                                top: 32,
-                                width: 20,
-                                height: 20,
-                                borderRadius: '50%',
-                                border: '2px solid rgba(82,68,104,0.22)',
-                                background: '#ffffff',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                cursor: canReceive ? 'pointer' : 'default',
-                                opacity: connectState ? 1 : 0.82,
-                                zIndex: 3,
-                              }}
-                            >
-                              <div style={{ width: 8, height: 8, borderRadius: '50%', background: canReceive ? BUILDER_ACCENT : 'rgba(92,81,109,0.4)' }} />
-                            </button>
-
-                            <button
-                              onClick={(event) => {
-                                setCanvasMode('connect');
-                                startConnection(event, node.id);
-                              }}
-                              style={{
-                                position: 'absolute',
-                                right: -8,
-                                top: 32,
-                                width: 20,
-                                height: 20,
-                                borderRadius: '50%',
-                                border: '2px solid rgba(82,68,104,0.22)',
-                                background: '#ffffff',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                cursor: 'crosshair',
-                                zIndex: 3,
-                              }}
-                            >
-                              <div style={{ width: 8, height: 8, borderRadius: '50%', background: isSource ? BUILDER_ACCENT : 'rgba(92,81,109,0.68)' }} />
-                            </button>
-
-                            <div style={{ position: 'absolute', left: -34, right: -34, bottom: -40, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, pointerEvents: 'none' }}>
-                              <div style={{ padding: '5px 10px', borderRadius: 10, background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(160,160,180,0.28)', color: '#2c2335', fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap' }}>
-                                {node.title}
-                              </div>
-                              <div style={{ color: 'rgba(55,45,66,0.65)', fontFamily: 'Manrope, sans-serif', fontSize: 11, whiteSpace: 'nowrap' }}>{node.subtitle}</div>
-                            </div>
+                            )}
                           </div>
                         );
                       })}
@@ -1973,100 +2810,25 @@ export default function AutomationAtomBuilder({
                       </div>
                     </div>
                   )}
-
-                  <div style={{ position: 'absolute', left: 18, bottom: 18, width: 218, padding: '12px 14px', borderRadius: 16, background: 'rgba(255,255,255,0.9)', border: '1px solid rgba(150,136,170,0.18)', boxShadow: '0 18px 36px rgba(39,20,58,0.08)' }}>
-                    <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.16em', color: '#7d6b91', textTransform: 'uppercase', marginBottom: 8 }}>
-                      Grid controls
-                    </div>
-                    <div style={{ display: 'grid', gap: 6, color: '#43374f', fontFamily: 'Manrope, sans-serif', fontSize: 11 }}>
-                      <div>Drag modules to rearrange your path.</div>
-                      <div>Use right-side ports to start new links.</div>
-                      <div>Click a module to bring its settings into focus.</div>
-                    </div>
-                  </div>
-
-                  <div style={{ position: 'absolute', right: 18, bottom: planRule.editable ? 18 : 154, width: 190, padding: '10px 10px 12px', borderRadius: 16, background: 'rgba(255,255,255,0.9)', border: '1px solid rgba(150,136,170,0.18)', boxShadow: '0 18px 36px rgba(39,20,58,0.08)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 9 }}>
-                      <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.16em', color: '#7d6b91', textTransform: 'uppercase' }}>
-                        Minimap
-                      </div>
-                      <div style={{ color: '#43374f', fontFamily: 'Manrope, sans-serif', fontSize: 10 }}>{zoom}%</div>
-                    </div>
-                    <div style={{ position: 'relative', height: 110, borderRadius: 12, overflow: 'hidden', background: 'linear-gradient(180deg, rgba(248,246,251,1), rgba(239,235,244,1))', border: '1px solid rgba(150,136,170,0.14)' }}>
-                      <svg viewBox="0 0 180 110" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
-                        {edges.map((edge) => {
-                          const from = nodes.find((node) => node.id === edge.from);
-                          const to = nodes.find((node) => node.id === edge.to);
-                          if (!from || !to) return null;
-                          const fromPos = getPosition(from);
-                          const toPos = getPosition(to);
-                          return (
-                            <line
-                              key={`mini-${edge.from}-${edge.to}`}
-                              x1={(fromPos.x / 1280) * 180}
-                              y1={(fromPos.y / 760) * 110}
-                              x2={(toPos.x / 1280) * 180}
-                              y2={(toPos.y / 760) * 110}
-                              stroke="rgba(145,130,170,0.45)"
-                              strokeWidth="1.8"
-                              strokeLinecap="round"
-                            />
-                          );
-                        })}
-                      </svg>
-                      {nodes.map((node) => {
-                        const pos = getPosition(node);
-                        const active = node.id === selectedNodeId;
-                        return (
-                          <div
-                            key={`mini-${node.id}`}
-                            style={{
-                              position: 'absolute',
-                              left: `calc(${(pos.x / 1280) * 100}% - 4px)`,
-                              top: `calc(${(pos.y / 760) * 100}% - 4px)`,
-                              width: active ? 10 : 8,
-                              height: active ? 10 : 8,
-                              borderRadius: '50%',
-                              background: active ? accent : node.color,
-                              border: active ? '2px solid #fff' : 'none',
-                              boxShadow: active ? '0 4px 10px rgba(0,0,0,0.14)' : 'none',
-                            }}
-                          />
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ position: 'absolute', left: '50%', bottom: 18, transform: 'translateX(-50%)', display: 'inline-flex', gap: 8, padding: 8, borderRadius: 18, background: 'rgba(255,255,255,0.94)', boxShadow: '0 16px 36px rgba(33,18,48,0.18)', border: '1px solid rgba(180,160,200,0.35)' }}>
-                  {[
-                    { label: 'Layout', icon: Settings2 },
-                    { label: 'Select', icon: CircleDot },
-                    { label: 'Branch', icon: GitBranch },
-                  ].map((item) => (
-                    <button key={item.label} style={{ border: 'none', background: 'transparent', color: '#2f2535', fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 13, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 7, padding: '8px 10px', cursor: 'pointer' }}>
-                      <item.icon size={14} /> {item.label}
-                    </button>
-                  ))}
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 12, marginTop: 14 }}>
+              <div className="builder-stage__footer">
                 <div style={{ padding: '14px 16px', borderRadius: 16, background: 'rgba(255,255,255,0.04)', border: `1px solid ${BUILDER_BORD}`, color: 'rgba(255,255,255,0.74)', fontFamily: 'Manrope, sans-serif', fontSize: 13 }}>
-                    <span style={{ color: '#fff', fontWeight: 700 }}>Atom Builder note:</span> {notice}
-                </div>
-                <div style={{ padding: '14px 16px', borderRadius: 16, background: 'rgba(255,255,255,0.04)', border: `1px solid ${BUILDER_BORD}` }}>
-                  <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.16em', color: 'rgba(255,255,255,0.42)', textTransform: 'uppercase', marginBottom: 8 }}>Execution preview</div>
-                  <div style={{ display: 'grid', gap: 7 }}>
-                    {EXECUTION_PREVIEW.map((item) => (
-                      <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontFamily: 'Manrope, sans-serif', fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>
-                        <span>{item.label}</span>
-                        <span style={{ color: '#fff', fontWeight: 700 }}>{item.value}</span>
-                      </div>
-                    ))}
-                  </div>
+                  <span style={{ color: '#fff', fontWeight: 700 }}>Status:</span> {notice}
                 </div>
               </div>
+              <RunConsole
+                open={runConsoleOpen}
+                onToggle={() => setRunConsoleOpen((open) => !open)}
+                status={executionStatus || (runBusy ? 'Running' : runState)}
+                runId={activeRunId}
+                entries={runLog}
+                nodes={nodes}
+                nativeRuns={nativeRuns}
+                accent={accent}
+                border={BUILDER_BORD}
+              />
             </div>
           </section>
 
@@ -2134,6 +2896,35 @@ export default function AutomationAtomBuilder({
                           </div>
                         ))}
                       </div>
+                      {nativeRuns[selectedNode.id] && (
+                        <div style={{ marginTop: 10, padding: '9px 11px', borderRadius: 12, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', fontFamily: 'Manrope, sans-serif', fontSize: 12 }}>
+                          <span style={{ color: 'rgba(255,255,255,0.72)' }}>Last native run</span>
+                          <span style={{ color: nativeRuns[selectedNode.id].status === 'failed' ? '#f87171' : nativeRuns[selectedNode.id].status === 'succeeded' ? accent : '#fbbf24', fontWeight: 700, textTransform: 'uppercase', fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.08em' }}>
+                            {nativeRuns[selectedNode.id].status}
+                            {nativeRuns[selectedNode.id].branch ? ` · ${nativeRuns[selectedNode.id].branch}` : ''}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ padding: 12, borderRadius: 14, background: 'rgba(255,255,255,0.025)', border: `1px solid ${BUILDER_BORD}` }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 9 }}>
+                        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.42)' }}>Typed ports</span>
+                        <span style={{ color: selectedNode.color, fontFamily: 'JetBrains Mono, monospace', fontSize: 10 }}>v{selectedNodeDefinition?.version || 1}</span>
+                      </div>
+                      <div style={{ display: 'grid', gap: 7 }}>
+                        {[['in', selectedNodeInputs], ['out', selectedNodeOutputs]].map(([direction, ports]) => (
+                          <div key={direction} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <span style={{ width: 28, color: 'rgba(255,255,255,0.36)', fontFamily: 'JetBrains Mono, monospace', fontSize: 10, textTransform: 'uppercase' }}>{direction}</span>
+                            {ports.map((port) => (
+                              <span key={port.id} title={port.description} style={{ padding: '4px 7px', borderRadius: 8, border: `1px solid ${port.required ? 'rgba(248,113,113,0.3)' : 'rgba(255,255,255,0.1)'}`, color: port.required ? '#fecaca' : 'rgba(255,255,255,0.72)', fontFamily: 'JetBrains Mono, monospace', fontSize: 10 }}>
+                                {port.id} · {port.dataType}{port.required ? ' *' : ''}
+                              </span>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ marginTop: 9, color: 'rgba(255,255,255,0.4)', fontFamily: 'Manrope, sans-serif', fontSize: 10 }}>{selectedNodeConfigFields.length} schema field{selectedNodeConfigFields.length === 1 ? '' : 's'} · {selectedNodeDefinition?.category || 'atom'}</div>
                     </div>
 
                     {inspectorTab === 'settings' && (
@@ -2141,7 +2932,6 @@ export default function AutomationAtomBuilder({
                         {[
                           { label: 'Name', field: 'title', as: 'input' },
                           { label: 'Description', field: 'subtitle', as: 'input' },
-                          { label: 'Notes', field: 'notes', as: 'textarea' },
                         ].map((field) => (
                           <label key={field.field} style={{ display: 'grid', gap: 7 }}>
                             <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.16em', color: 'rgba(255,255,255,0.38)', textTransform: 'uppercase' }}>{field.label}</span>
@@ -2161,6 +2951,247 @@ export default function AutomationAtomBuilder({
                             )}
                           </label>
                         ))}
+                        <button type="button" onClick={() => updateSelectedNode('disabled', !selectedNode.disabled)} style={{ padding: '10px 12px', borderRadius: 12, border: `1px solid ${selectedNode.disabled ? 'rgba(251,191,36,0.45)' : BUILDER_BORD}`, background: selectedNode.disabled ? 'rgba(251,191,36,0.12)' : 'rgba(255,255,255,0.03)', color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 12, cursor: 'pointer', textAlign: 'left' }}>
+                          {selectedNode.disabled ? 'Enable atom' : 'Disable atom'}
+                        </button>
+
+                        {(() => {
+                          const kind = nativeKindOf(selectedNode);
+                          const cfg = selectedNode.config || {};
+                          const editorStyle = { display: 'grid', gap: 10, marginTop: 4, padding: 14, borderRadius: 16, background: 'rgba(255,255,255,0.03)', border: `1px solid ${BUILDER_BORD}` };
+                          const labelStyle = { fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.16em', color: 'rgba(255,255,255,0.38)', textTransform: 'uppercase' };
+                          const textStyle = { width: '100%', borderRadius: 14, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.03)', color: '#fff', padding: '12px 13px', fontFamily: 'Manrope, sans-serif', fontSize: 13, outline: 'none', boxSizing: 'border-box' };
+                          const addCondition = () => {
+                            const group = cfg.groups?.[0] || { groupOperator: 'and', conditions: [] };
+                            updateSelectedBranchGroup({ conditions: [...(group.conditions || []), { path: 'input.body.some_field', operator: 'equals', value: '' }] });
+                          };
+                          const removeCondition = (index) => {
+                            const group = cfg.groups?.[0] || { groupOperator: 'and', conditions: [] };
+                            updateSelectedBranchGroup({ conditions: (group.conditions || []).filter((_, idx) => idx !== index) });
+                          };
+                          const mappingEntries = Object.entries(cfg.mapping || {});
+                          let body = null;
+
+                          if (kind === 'manual' || kind === 'trigger' || kind === 'webhook' || kind === 'schedule') {
+                            body = (
+                              <div style={{ fontFamily: 'Manrope, sans-serif', fontSize: 12, lineHeight: 1.6, color: 'rgba(255,255,255,0.66)' }}>
+                                This trigger starts the flow. Set its test payload in the <strong style={{ color: '#fff' }}>Run</strong> tab, then run the path to verify the whole chain end to end.
+                              </div>
+                            );
+                          } else if (kind === 'ai') {
+                            const selectedConnection = cfg.connection ? `connection:${cfg.connection}` : cfg.credentialRef ? `credential:${cfg.credentialRef}` : '';
+                            body = (
+                              <>
+                                <label style={{ display: 'grid', gap: 7 }}>
+                                  <span style={labelStyle}>Provider</span>
+                                  <select value={cfg.provider || 'openai'} onChange={(event) => updateSelectedNativeConfig({ provider: event.target.value, model: event.target.value === 'anthropic' ? 'claude-3-5-haiku-latest' : event.target.value === 'gemini' ? 'gemini-2.0-flash' : 'gpt-4o-mini' })} style={textStyle}>
+                                    <option value="openai">OpenAI</option>
+                                    <option value="anthropic">Anthropic</option>
+                                    <option value="gemini">Google Gemini</option>
+                                  </select>
+                                </label>
+                                <label style={{ display: 'grid', gap: 7 }}>
+                                  <span style={labelStyle}>Connection</span>
+                                  <select
+                                    value={selectedConnection}
+                                    onFocus={() => { if (canUseWorkspaceBackend && connections === null) refreshConnections(); }}
+                                    onChange={(event) => {
+                                      const [type, ...parts] = event.target.value.split(':');
+                                      const name = parts.join(':');
+                                      updateSelectedNativeConfig(type === 'connection' ? { connection: name, credentialRef: '' } : type === 'credential' ? { connection: '', credentialRef: name } : { connection: '', credentialRef: '' });
+                                    }}
+                                    style={textStyle}
+                                  >
+                                    <option value="">Choose a connection</option>
+                                    {(connections?.connections || []).filter((item) => !cfg.provider || item.provider === cfg.provider || (cfg.provider === 'gemini' && item.provider === 'google')).map((item) => <option key={`connection:${item.id}`} value={`connection:${item.name}`}>{item.name} · connected</option>)}
+                                    {(connections?.credentials || []).filter((item) => !cfg.provider || item.provider === cfg.provider || (cfg.provider === 'gemini' && ['google', 'gemini'].includes(item.provider))).map((item) => <option key={`credential:${item.id}`} value={`credential:${item.name}`}>{item.name} · credential</option>)}
+                                  </select>
+                                  {!canUseWorkspaceBackend && <small style={{ color: 'rgba(255,255,255,0.46)', fontFamily: 'Manrope, sans-serif' }}>{hasSupabaseConfig ? 'Sign in to use workspace connections and encrypted AI credentials.' : 'Connect Supabase to use encrypted AI credentials.'}</small>}
+                                </label>
+                                <label style={{ display: 'grid', gap: 7 }}>
+                                  <span style={labelStyle}>Prompt</span>
+                                  <textarea rows={5} value={cfg.prompt || ''} onChange={(event) => updateSelectedNativeConfig({ prompt: event.target.value })} placeholder="Summarize the previous Atom’s output" style={{ ...textStyle, resize: 'vertical', lineHeight: 1.5 }} />
+                                </label>
+                                <button type="button" onClick={() => setAdvancedOpen((open) => !open)} style={{ padding: '9px 11px', borderRadius: 12, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.03)', color: 'rgba(255,255,255,0.76)', fontFamily: 'Manrope, sans-serif', fontSize: 12, cursor: 'pointer' }}>
+                                  {advancedOpen ? 'Hide advanced' : 'Advanced'}
+                                </button>
+                                {advancedOpen && (
+                                  <div style={{ display: 'grid', gap: 9 }}>
+                                    <label style={{ display: 'grid', gap: 7 }}><span style={labelStyle}>Model</span><input value={cfg.model || ''} onChange={(event) => updateSelectedNativeConfig({ model: event.target.value })} style={textStyle} /></label>
+                                    <label style={{ display: 'grid', gap: 7 }}><span style={labelStyle}>System instructions</span><textarea rows={4} value={cfg.systemPrompt || ''} onChange={(event) => updateSelectedNativeConfig({ systemPrompt: event.target.value })} style={{ ...textStyle, resize: 'vertical' }} /></label>
+                                    <label style={{ display: 'grid', gap: 7 }}><span style={labelStyle}>Temperature</span><input type="number" min="0" max="2" step="0.1" value={cfg.temperature ?? 0} onChange={(event) => updateSelectedNativeConfig({ temperature: Number(event.target.value) })} style={textStyle} /></label>
+                                    <label style={{ display: 'grid', gap: 7 }}><span style={labelStyle}>Max tokens</span><input type="number" min="1" value={cfg.maxTokens ?? 1024} onChange={(event) => updateSelectedNativeConfig({ maxTokens: Number(event.target.value) })} style={textStyle} /></label>
+                                  </div>
+                                )}
+                              </>
+                            );
+                          } else if (kind === 'http') {
+                            body = (
+                              <>
+                                <label style={{ display: 'grid', gap: 7 }}>
+                                  <span style={labelStyle}>URL</span>
+                                  <input value={cfg.url || ''} onChange={(event) => updateSelectedNativeConfig({ url: event.target.value })} placeholder="https://api.example.com/endpoint" style={textStyle} />
+                                </label>
+                                <div>
+                                  <span style={{ ...labelStyle, display: 'block', marginBottom: 7 }}>Method</span>
+                                  <div style={{ display: 'inline-flex', padding: 4, borderRadius: 999, background: 'rgba(255,255,255,0.04)', border: `1px solid ${BUILDER_BORD}`, flexWrap: 'wrap', gap: 4 }}>
+                                    {['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((method) => {
+                                      const active = (cfg.method || 'POST') === method;
+                                      return (
+                                        <button key={method} onClick={() => updateSelectedNativeConfig({ method })} style={{ padding: '7px 12px', borderRadius: 999, border: 'none', background: active ? `${accent}18` : 'transparent', color: active ? '#fff' : 'rgba(255,255,255,0.58)', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                                          {method}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                                <label style={{ display: 'grid', gap: 7 }}>
+                                  <span style={labelStyle}>Authentication</span>
+                                  <select value={cfg.connection || cfg.credential || ''} onFocus={() => { if (canUseWorkspaceBackend && connections === null) refreshConnections(); }} onChange={(event) => updateSelectedNativeConfig({ connection: event.target.value, credential: '' })} style={textStyle}>
+                                    <option value="">No authentication</option>
+                                    {(connections?.connections || []).map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}
+                                  </select>
+                                </label>
+                                <button type="button" onClick={() => setAdvancedOpen((open) => !open)} style={{ padding: '9px 11px', borderRadius: 12, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.03)', color: 'rgba(255,255,255,0.76)', fontFamily: 'Manrope, sans-serif', fontSize: 12, cursor: 'pointer' }}>{advancedOpen ? 'Hide advanced' : 'More options'}</button>
+                                {advancedOpen && <div style={{ display: 'grid', gap: 10 }}>
+                                  <label style={{ display: 'grid', gap: 7 }}><span style={labelStyle}>Headers</span><RawJsonEditor key={`${selectedNode.id}-hdr`} initial={cfg.headers || {}} onChange={(headers) => updateSelectedNativeConfig({ headers })} placeholder='{ "X-Request-ID": "{{ execution.id }}" }' compact /></label>
+                                  <label style={{ display: 'grid', gap: 7 }}><span style={labelStyle}>Body</span><RawJsonEditor key={`${selectedNode.id}-body`} initial={cfg.body || {}} onChange={(body) => updateSelectedNativeConfig({ body })} placeholder='{ "summary": "{{ previous.output.content }}" }' compact /></label>
+                                  <label style={{ display: 'grid', gap: 7 }}><span style={labelStyle}>Query parameters</span><RawJsonEditor key={`${selectedNode.id}-query`} initial={cfg.query || {}} onChange={(query) => updateSelectedNativeConfig({ query })} placeholder='{ "page": 1 }' compact /></label>
+                                  <label style={{ display: 'grid', gap: 7 }}><span style={labelStyle}>Timeout (ms)</span><input type="number" min="100" value={cfg.timeoutMs ?? 15000} onChange={(event) => updateSelectedNativeConfig({ timeoutMs: Number(event.target.value) })} style={textStyle} /></label>
+                                </div>}
+                              </>
+                            );
+                          } else if (kind === 'make') {
+                            body = (
+                              <>
+                                <div style={{ fontFamily: 'Manrope, sans-serif', fontSize: 12, lineHeight: 1.6, color: 'rgba(255,255,255,0.66)' }}>
+                                  Make webhook nodes run through the native engine's HTTP client with SSRF protection.
+                                </div>
+                                <label style={{ display: 'grid', gap: 7 }}>
+                                  <span style={labelStyle}>Webhook URL</span>
+                                  <input value={cfg.url || ''} onChange={(event) => updateSelectedNativeConfig({ url: event.target.value })} placeholder="https://hook.us2.make.com/..." style={textStyle} />
+                                </label>
+                                <label style={{ display: 'grid', gap: 7 }}>
+                                  <span style={labelStyle}>Payload (JSON)</span>
+                                  <RawJsonEditor key={`${selectedNode.id}-make`} initial={cfg.body ?? cfg.headers ?? {}} onChange={(headers) => updateSelectedNativeConfig({ headers })} placeholder='{ "body": { "amount": 300 } }' compact />
+                                </label>
+                              </>
+                            );
+                          } else if (kind === 'transform' || kind === 'agent') {
+                            body = (
+                              <>
+                                <div style={{ fontFamily: 'Manrope, sans-serif', fontSize: 12, lineHeight: 1.6, color: 'rgba(255,255,255,0.66)' }}>
+                                  Map fields to expressions. Upstream output is available as <strong style={{ color: '#fff' }}>previous.output</strong> and the trigger payload as <strong style={{ color: '#fff' }}>input</strong>.
+                                </div>
+                                {mappingEntries.map(([key, value]) => (
+                                  <div key={key} style={{ display: 'grid', gap: 7, padding: 9, borderRadius: 12, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.02)' }}>
+                                    <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
+                                      <input aria-label="Output field name" value={key} onChange={(event) => { const entries = Object.entries(cfg.mapping || {}); const next = {}; entries.forEach(([k, v], idx) => { next[idx === entries.findIndex((e) => e[0] === key) ? event.target.value : k] = v; }); updateSelectedNativeConfig({ mapping: next }); }} style={{ ...textStyle, width: '38%', fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }} />
+                                      <input aria-label={`Value for ${key}`} value={typeof value === 'string' ? value : JSON.stringify(value)} onChange={(event) => updateSelectedMapping(key, event.target.value)} placeholder="Type a value" style={{ ...textStyle, flex: 1, fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }} />
+                                    <button onClick={() => { const next = { ...(cfg.mapping || {}) }; delete next[key]; updateSelectedNativeConfig({ mapping: next }); }} style={{ width: 30, height: 30, borderRadius: 9, border: 'none', background: 'rgba(239,68,68,0.12)', color: '#f87171', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', alignSelf: 'center' }}>
+                                      <X size={13} />
+                                    </button>
+                                    </div>
+                                    <select aria-label={`Insert upstream data for ${key}`} value="" onChange={(event) => { if (event.target.value) updateSelectedMapping(key, event.target.value); }} style={{ ...textStyle, padding: '9px 10px', fontSize: 11 }}>
+                                      <option value="">Insert data…</option>
+                                      <option value="{{ previous.output }}">Previous Atom → entire output</option>
+                                      <option value="{{ trigger }}">Trigger → payload</option>
+                                      {upstreamNodes.map((upstream) => {
+                                        const output = nativeRuns[upstream.id]?.output;
+                                        const fields = output && typeof output === 'object' && !Array.isArray(output) ? Object.keys(output).slice(0, 12) : [];
+                                        return (
+                                          <optgroup key={upstream.id} label={upstream.title}>
+                                            <option value={`{{ nodes['${upstream.id}'].output }}`}>Entire output</option>
+                                            {fields.map((field) => <option key={field} value={`{{ nodes['${upstream.id}'].output['${field}'] }}`}>{field}</option>)}
+                                          </optgroup>
+                                        );
+                                      })}
+                                    </select>
+                                  </div>
+                                ))}
+                                <button onClick={() => updateSelectedMapping(`field_${Date.now()}`, '')} style={{ padding: '9px 11px', borderRadius: 12, border: `1px dashed ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.03)', color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                                  + Add mapping
+                                </button>
+                              </>
+                            );
+                          } else if (kind === 'branch') {
+                            const group = cfg.groups?.[0] || { groupOperator: 'and', conditions: [] };
+                            body = (
+                              <>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                                  <span style={labelStyle}>Group operator</span>
+                                  <div style={{ display: 'inline-flex', padding: 3, borderRadius: 999, background: 'rgba(255,255,255,0.04)', border: `1px solid ${BUILDER_BORD}` }}>
+                                    {['and', 'or'].map((op) => (
+                                      <button key={op} onClick={() => updateSelectedBranchGroup({ groupOperator: op })} style={{ padding: '6px 12px', borderRadius: 999, border: 'none', background: (group.groupOperator || 'and') === op ? `${accent}18` : 'transparent', color: (group.groupOperator || 'and') === op ? '#fff' : 'rgba(255,255,255,0.58)', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 12, textTransform: 'uppercase', cursor: 'pointer' }}>
+                                        {op}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div style={{ display: 'grid', gap: 8 }}>
+                                  {(group.conditions || []).map((cond, index) => (
+                                    <div key={index} style={{ display: 'grid', gap: 6, padding: 11, borderRadius: 12, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.025)' }}>
+                                      <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
+                                        <input value={cond.path || ''} onChange={(event) => updateSelectedBranchCondition(index, { path: event.target.value })} placeholder="path.to.field" style={{ ...textStyle, width: '42%', fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }} />
+                                        <select value={cond.operator || 'equals'} onChange={(event) => updateSelectedBranchCondition(index, { operator: event.target.value })} style={{ ...textStyle, width: '31%', padding: '10px 11px' }}>
+                                          {BRANCH_OPERATORS.map(([op, label]) => <option key={op} value={op}>{label}</option>)}
+                                        </select>
+                                        <button onClick={() => removeCondition(index)} style={{ width: 30, height: 30, borderRadius: 9, border: 'none', background: 'rgba(239,68,68,0.12)', color: '#f87171', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', alignSelf: 'center' }}>
+                                          <X size={13} />
+                                        </button>
+                                      </div>
+                                      <input value={typeof cond.value === 'string' ? cond.value : JSON.stringify(cond.value ?? '')} onChange={(event) => updateSelectedBranchCondition(index, { value: event.target.value })} placeholder="expected value" style={{ ...textStyle, fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }} />
+                                    </div>
+                                  ))}
+                                </div>
+                                <button onClick={addCondition} style={{ padding: '9px 11px', borderRadius: 12, border: `1px dashed ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.03)', color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                                  + Add condition
+                                </button>
+                              </>
+                            );
+                          } else if (kind === 'delay') {
+                            body = (
+                              <>
+                                <div style={{ fontFamily: 'Manrope, sans-serif', fontSize: 12, lineHeight: 1.6, color: 'rgba(255,255,255,0.66)' }}>
+                                  Pause the flow for a fixed number of seconds before continuing.
+                                </div>
+                                <label style={{ display: 'grid', gap: 7 }}>
+                                  <span style={labelStyle}>Seconds</span>
+                                  <input type="number" min={0} value={cfg.seconds ?? 10} onChange={(event) => updateSelectedNativeConfig({ seconds: Math.max(0, Number(event.target.value) || 0) })} style={textStyle} />
+                                </label>
+                              </>
+                            );
+                          } else if (kind === 'approval') {
+                            body = (
+                              <>
+                                <label style={{ display: 'grid', gap: 7 }}>
+                                  <span style={labelStyle}>Title</span>
+                                  <input value={cfg.title || ''} onChange={(event) => updateSelectedNativeConfig({ title: event.target.value })} style={textStyle} />
+                                </label>
+                                <label style={{ display: 'grid', gap: 7 }}>
+                                  <span style={labelStyle}>Message</span>
+                                  <input value={cfg.message || ''} onChange={(event) => updateSelectedNativeConfig({ message: event.target.value })} style={textStyle} />
+                                </label>
+                              </>
+                            );
+                          } else {
+                            body = (
+                              <div style={{ fontFamily: 'Manrope, sans-serif', fontSize: 12, lineHeight: 1.6, color: 'rgba(255,255,255,0.66)' }}>
+                                This connector (kind <strong style={{ color: '#fff' }}>{kind}</strong>) is not enabled in the native engine yet. It will stop with a <code style={{ fontFamily: 'JetBrains Mono, monospace' }}>not_enabled</code> error until a connector is shipped.
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div style={editorStyle}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                                <span style={{ fontFamily: 'Bricolage Grotesque, sans-serif', color: '#fff', fontSize: 13, fontWeight: 700 }}>Native config</span>
+                                <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.12em', color: 'rgba(255,255,255,0.42)', textTransform: 'uppercase' }}>{kind}</span>
+                              </div>
+                              <div style={{ display: 'grid', gap: 10 }}>{body}</div>
+                            </div>
+                          );
+                        })()}
 
                         {nodeSupportsMake(selectedNode) && (
                           <div style={{ display: 'grid', gap: 10, marginTop: 4, padding: 14, borderRadius: 16, background: 'rgba(255,255,255,0.03)', border: `1px solid ${BUILDER_BORD}` }}>
@@ -2361,8 +3392,9 @@ export default function AutomationAtomBuilder({
                         {[
                           ['Incoming links', `${incomingCount}`],
                           ['Outgoing links', `${outgoingCount}`],
-                          ['Mapped fields', selectedNode.type === 'integration' ? '7 fields' : '4 fields'],
-                          ['Payload mode', selectedNode.type === 'logic' ? 'Condition set' : 'Structured JSON'],
+                          ['Mapped fields', `${Object.keys(selectedNode.config?.mapping || {}).length}`],
+                          ['Available sources', `${upstreamNodes.length + 1}`],
+                          ['Payload mode', nativeKindOf(selectedNode) === 'branch' ? 'Condition set' : 'Structured data'],
                         ].map(([label, value]) => (
                           <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '12px 13px', borderRadius: 14, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.03)', fontFamily: 'Manrope, sans-serif', fontSize: 13, color: 'rgba(255,255,255,0.74)' }}>
                             <span>{label}</span>
@@ -2374,48 +3406,58 @@ export default function AutomationAtomBuilder({
 
                     {inspectorTab === 'run' && (
                       <div style={{ display: 'grid', gap: 10 }}>
-                        {[
-                          ['Last result', planRule.editable ? 'Passed' : 'Locked on Starter'],
-                          ['Execution time', '1.9 sec'],
-                          ['Review gate', selectedNode.approval],
-                          ['Fallback retries', `${selectedNode.retries}`],
-                        ].map(([label, value]) => (
-                          <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '12px 13px', borderRadius: 14, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.03)', fontFamily: 'Manrope, sans-serif', fontSize: 13, color: 'rgba(255,255,255,0.74)' }}>
-                            <span>{label}</span>
-                            <span style={{ color: '#fff', fontWeight: 700 }}>{value}</span>
+                        {nativeKindOf(selectedNode) === 'manual' || nativeKindOf(selectedNode) === 'trigger' ? (
+                          <label style={{ display: 'grid', gap: 7 }}>
+                            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.16em', color: 'rgba(255,255,255,0.38)', textTransform: 'uppercase' }}>Manual trigger payload (JSON)</span>
+                            <RawJsonEditor key={`${selectedNode.id}-payload`} initial={(() => { try { return JSON.parse(manualPayload || '{}'); } catch { return { body: {} }; } })()} onChange={(payload) => setManualPayload(JSON.stringify(payload, null, 2))} placeholder='{ "body": { "amount": 300 } }' compact />
+                            <span style={{ fontFamily: 'Manrope, sans-serif', fontSize: 11, lineHeight: 1.55, color: 'rgba(255,255,255,0.5)' }}>
+                              This payload is sent through the whole graph as <strong style={{ color: '#fff' }}>input</strong> (e.g. <code style={{ fontFamily: 'JetBrains Mono, monospace' }}>input.body.amount</code>).
+                            </span>
+                          </label>
+                        ) : (
+                          <div style={{ padding: '11px 13px', borderRadius: 14, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.03)', fontFamily: 'Manrope, sans-serif', fontSize: 12, lineHeight: 1.6, color: 'rgba(255,255,255,0.66)' }}>
+                            This atom consumes <strong style={{ color: '#fff' }}>previous.output</strong> from the upstream atom and exposes its own output to the next atom in the chain.
                           </div>
-                        ))}
-
-                        {nodeSupportsMake(selectedNode) && (
-                          <>
-                            {[
-                              ['Make status', selectedNode.makeConfig?.lastStatus || 'Not connected'],
-                              ['Last sent', selectedNode.makeConfig?.lastRunAt || 'No run yet'],
-                              ['Scenario', selectedNode.makeConfig?.scenarioName || 'Unlabeled'],
-                              ['Backend route', hasSupabaseConfig ? 'Supabase edge function' : 'Browser direct webhook'],
-                            ].map(([label, value]) => (
-                              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '12px 13px', borderRadius: 14, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.03)', fontFamily: 'Manrope, sans-serif', fontSize: 13, color: 'rgba(255,255,255,0.74)' }}>
-                                <span>{label}</span>
-                                <span style={{ color: '#fff', fontWeight: 700, textAlign: 'right' }}>{value}</span>
-                              </div>
-                            ))}
-
-                            <div style={{ padding: 12, borderRadius: 14, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.03)' }}>
-                              <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.16em', color: 'rgba(255,255,255,0.38)', textTransform: 'uppercase', marginBottom: 8 }}>
-                                Last response
-                              </div>
-                              <div style={{ color: 'rgba(255,255,255,0.72)', fontFamily: 'Manrope, sans-serif', fontSize: 12, lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                                {selectedNode.makeConfig?.lastResponse || 'No response captured yet.'}
-                              </div>
-                            </div>
-                          </>
                         )}
+
+                        {(() => {
+                          const run = nativeRuns[selectedNode.id];
+                          const rows = [
+                            ['Run id', activeRunId ? activeRunId.slice(0, 8) : '—'],
+                            ['Status', run ? run.status : 'Idle'],
+                            ['Branch', run && run.branch ? String(run.branch).toUpperCase() : '—'],
+                            ['Attempt', run ? `${run.attempt ?? 1}` : '—'],
+                            ['HTTP status', run && run.httpStatus ? String(run.httpStatus) : '—'],
+                            ['Retries', `${selectedNode.retries}`],
+                          ];
+                          const runDetail = run ? (run.error ? (typeof run.error === 'string' ? run.error : run.error.message || JSON.stringify(run.error)) : run.output ? (typeof run.output === 'string' ? run.output : JSON.stringify(run.output)) : null) : null;
+                          return (
+                            <>
+                              {rows.map(([label, value]) => (
+                                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '12px 13px', borderRadius: 14, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.03)', fontFamily: 'Manrope, sans-serif', fontSize: 13, color: 'rgba(255,255,255,0.74)' }}>
+                                  <span>{label}</span>
+                                  <span style={{ color: '#fff', fontWeight: 700, textAlign: 'right', textTransform: 'uppercase' }}>{value}</span>
+                                </div>
+                              ))}
+                              {runDetail && (
+                                <div style={{ padding: 12, borderRadius: 14, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.03)' }}>
+                                  <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.16em', color: 'rgba(255,255,255,0.38)', textTransform: 'uppercase', marginBottom: 8 }}>
+                                    Output
+                                  </div>
+                                  <div style={{ color: 'rgba(255,255,255,0.72)', fontFamily: 'JetBrains Mono, monospace', fontSize: 11, lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                                    {runDetail}
+                                  </div>
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
                     )}
 
                     <div className="builder-actions" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                      <button onClick={() => appendAtom(LOGIC_BLOCKS[0], true)} style={{ padding: '11px 13px', borderRadius: 12, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.04)', color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 13, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, cursor: 'pointer' }}>
-                        <GitBranch size={14} /> Branch
+                      <button onClick={duplicateSelectedNode} style={{ padding: '11px 13px', borderRadius: 12, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.04)', color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 13, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, cursor: 'pointer' }}>
+                        <CopyPlus size={14} /> Duplicate
                       </button>
                       <button onClick={removeSelectedNode} style={{ padding: '11px 13px', borderRadius: 12, border: `1px solid rgba(239,68,68,0.32)`, background: 'rgba(239,68,68,0.08)', color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 13, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, cursor: 'pointer' }}>
                         <Trash2 size={14} /> Remove
@@ -2430,7 +3472,7 @@ export default function AutomationAtomBuilder({
               </div>
             </div>
 
-            <div style={{ padding: 18, display: 'grid', gap: 12 }}>
+            {managementOpen && <div className="builder-management" style={{ padding: 18, display: 'grid', gap: 12 }}>
               <div style={{ padding: 16, borderRadius: 16, background: 'rgba(255,255,255,0.03)', border: `1px solid ${BUILDER_BORD}` }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 15, fontWeight: 700 }}>
@@ -2477,7 +3519,7 @@ export default function AutomationAtomBuilder({
                   <button onClick={() => createFreshFlow(activePlanName === 'Starter' ? 'Pro' : activePlanName)} style={{ padding: '10px 12px', borderRadius: 12, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.04)', color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
                     New draft
                   </button>
-                  <button onClick={deleteCurrentFlowFromBackend} disabled={!flowId || flowsBusy} style={{ padding: '10px 12px', borderRadius: 12, border: `1px solid rgba(239,68,68,0.32)`, background: 'rgba(239,68,68,0.08)', color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 12, cursor: !flowId || flowsBusy ? 'not-allowed' : 'pointer', opacity: !flowId || flowsBusy ? 0.5 : 1 }}>
+                  <button onClick={() => setPendingDelete({ kind: 'flow', id: flowId, label: flowName })} disabled={!flowId || flowsBusy} style={{ padding: '10px 12px', borderRadius: 12, border: `1px solid rgba(239,68,68,0.32)`, background: 'rgba(239,68,68,0.08)', color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 12, cursor: !flowId || flowsBusy ? 'not-allowed' : 'pointer', opacity: !flowId || flowsBusy ? 0.5 : 1 }}>
                     Delete saved
                   </button>
                 </div>
@@ -2488,7 +3530,7 @@ export default function AutomationAtomBuilder({
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 15, fontWeight: 700 }}>
                     <Database size={15} color={accent} /> Backend status
                   </div>
-                  <button onClick={() => refreshBackendStatus()} disabled={backendStatusBusy || !hasSupabaseConfig} style={{ width: 32, height: 32, borderRadius: 10, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.04)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: backendStatusBusy || !hasSupabaseConfig ? 'not-allowed' : 'pointer', opacity: backendStatusBusy || !hasSupabaseConfig ? 0.55 : 1 }}>
+                  <button onClick={() => refreshBackendStatus()} disabled={backendStatusBusy || !canUseWorkspaceBackend} style={{ width: 32, height: 32, borderRadius: 10, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.04)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: backendStatusBusy || !canUseWorkspaceBackend ? 'not-allowed' : 'pointer', opacity: backendStatusBusy || !canUseWorkspaceBackend ? 0.55 : 1 }}>
                     <RefreshCw size={14} />
                   </button>
                 </div>
@@ -2536,35 +3578,64 @@ export default function AutomationAtomBuilder({
 
               <div style={{ padding: 16, borderRadius: 16, background: 'rgba(255,255,255,0.03)', border: `1px solid ${BUILDER_BORD}` }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 15, fontWeight: 700 }}>
-                  <History size={15} color={accent} /> Backend run history
+                  <History size={15} color={accent} /> Execution history
                 </div>
                 <div style={{ display: 'grid', gap: 8 }}>
-                  {backendRuns.length ? backendRuns.map((run) => (
-                    <button
-                      key={run.id}
-                      onClick={() => inspectRun(run.id)}
-                      style={{
-                        width: '100%',
-                        textAlign: 'left',
-                        padding: '10px 11px',
-                        borderRadius: 12,
-                        border: `1px solid ${activeRunId === run.id ? `${accent}55` : BUILDER_BORD}`,
-                        background: activeRunId === run.id ? `${accent}10` : 'rgba(255,255,255,0.03)',
-                        color: '#fff',
-                        cursor: runsBusy ? 'wait' : 'pointer',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
-                        <div style={{ fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 13, fontWeight: 700 }}>{run.flow_name || flowName}</div>
-                        <div style={{ color: accent, fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase' }}>{run.status}</div>
+                  {backendRuns.length ? backendRuns.map((run) => {
+                    const runnableCancel = run.native && ['queued', 'running', 'retry_scheduled', 'waiting', 'awaiting_approval'].includes(run.status);
+                    const runnableRetry = run.native && ['failed', 'canceled', 'timed_out'].includes(run.status);
+                    return (
+                      <div
+                        key={run.id}
+                        style={{
+                          width: '100%',
+                          padding: '10px 11px',
+                          borderRadius: 12,
+                          border: `1px solid ${activeRunId === run.id ? `${accent}55` : BUILDER_BORD}`,
+                          background: activeRunId === run.id ? `${accent}10` : 'rgba(255,255,255,0.03)',
+                          color: '#fff',
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => inspectRun(run.id)}
+                          disabled={runsBusy}
+                          style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: 'inherit', padding: 0, cursor: runsBusy ? 'wait' : 'pointer', fontFamily: 'inherit' }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                              <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '2px 6px', borderRadius: 999, background: run.native ? `${accent}18` : 'rgba(255,255,255,0.08)', color: run.native ? accent : 'rgba(255,255,255,0.6)' }}>
+                                {run.native ? run.trigger_type || 'manual' : 'make'}
+                              </span>
+                              <span style={{ fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 13, fontWeight: 700, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{run.flow_name || flowName}</span>
+                            </div>
+                            <div style={{ color: run.status === 'failed' ? '#f87171' : run.status === 'completed' || run.status === 'succeeded' ? accent : run.native ? '#fbbf24' : 'rgba(255,255,255,0.6)', fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                              {run.status}
+                            </div>
+                          </div>
+                          <div style={{ color: 'rgba(255,255,255,0.56)', fontFamily: 'Manrope, sans-serif', fontSize: 11 }}>
+                            {new Date(run.started_at || run.created_at).toLocaleString()}
+                          </div>
+                        </button>
+                        {(runnableCancel || runnableRetry) && (
+                          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                            {runnableCancel && (
+                              <button type="button" onClick={() => handleCancelRun(run.id)} style={{ flex: 1, padding: '7px 10px', borderRadius: 9, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(248,113,113,0.12)', color: '#fca5a5', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 11, cursor: 'pointer' }}>
+                                Cancel
+                              </button>
+                            )}
+                            {runnableRetry && (
+                              <button type="button" onClick={() => handleRetryRun(run.id)} style={{ flex: 1, padding: '7px 10px', borderRadius: 9, border: `1px solid ${BUILDER_BORD}`, background: `${accent}18`, color: accent, fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 11, cursor: 'pointer' }}>
+                                Retry
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      <div style={{ color: 'rgba(255,255,255,0.56)', fontFamily: 'Manrope, sans-serif', fontSize: 11 }}>
-                        {new Date(run.started_at).toLocaleString()}
-                      </div>
-                    </button>
-                  )) : (
+                    );
+                  }) : (
                     <div style={{ color: 'rgba(255,255,255,0.58)', fontFamily: 'Manrope, sans-serif', fontSize: 12, lineHeight: 1.6 }}>
-                      No backend runs yet. Save a flow and activate a path to build up execution history.
+                      No executions yet. Save a flow and run the path to build up native execution history.
                     </div>
                   )}
                 </div>
@@ -2572,54 +3643,248 @@ export default function AutomationAtomBuilder({
 
               <div style={{ padding: 16, borderRadius: 16, background: 'rgba(255,255,255,0.03)', border: `1px solid ${BUILDER_BORD}` }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 15, fontWeight: 700 }}>
-                  <MessageSquare size={15} color={accent} /> Make run log
+                  <MessageSquare size={15} color={accent} /> Execution log
                 </div>
                 <div style={{ display: 'grid', gap: 8 }}>
                   {runLog.length ? runLog.map((entry) => (
                     <div key={entry.id} style={{ padding: '10px 11px', borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: `1px solid ${BUILDER_BORD}` }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
                         <div style={{ color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 13, fontWeight: 700 }}>{entry.nodeTitle}</div>
-                        <div style={{ color: accent, fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase' }}>{entry.status}</div>
+                        <div style={{ color: entry.status === 'failed' || entry.status === 'error' ? '#f87171' : entry.status === 'succeeded' ? accent : accent, fontFamily: 'JetBrains Mono, monospace', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase' }}>{entry.status}</div>
                       </div>
                       <div style={{ color: 'rgba(255,255,255,0.58)', fontFamily: 'Manrope, sans-serif', fontSize: 11, lineHeight: 1.5 }}>{entry.detail}</div>
+                      {entry.at && <div style={{ color: 'rgba(255,255,255,0.35)', fontFamily: 'Manrope, sans-serif', fontSize: 10, marginTop: 4 }}>{new Date(entry.at).toLocaleString()}</div>}
                     </div>
                   )) : (
                     <div style={{ color: 'rgba(255,255,255,0.58)', fontFamily: 'Manrope, sans-serif', fontSize: 12, lineHeight: 1.6 }}>
-                      No path runs yet. Once you connect your Make webhook URLs, tests and full path activations will show up here.
+                      No logs yet. Run the path to see per-node status, branch routes, and captured output or errors.
                     </div>
                   )}
                 </div>
               </div>
 
               <div style={{ padding: 16, borderRadius: 16, background: 'rgba(255,255,255,0.03)', border: `1px solid ${BUILDER_BORD}` }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 15, fontWeight: 700 }}>
-                  <Crown size={15} color={accent} /> Subscription fit
-                </div>
-                <div style={{ color: 'rgba(255,255,255,0.58)', fontFamily: 'Manrope, sans-serif', fontSize: 12, lineHeight: 1.6 }}>
-                  {activePlanName === 'Starter'
-                    ? 'Starter does not include Atom Builder access for subscribers. Keep this state locked so the product promise stays clear.'
-                    : activePlanName === 'Pro'
-                      ? 'Pro is the paid Atom Builder tier: one trigger, a small branch or decision layer, and one follow-through atom up to 3 total.'
-                      : 'Enterprise opens the full canvas: 10 atoms, more approvals, deeper branching, and room for future automation characters.'}
-                </div>
-              </div>
-              <div style={{ padding: 16, borderRadius: 16, background: 'rgba(255,255,255,0.03)', border: `1px solid ${BUILDER_BORD}` }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 15, fontWeight: 700 }}>
-                  <Sparkles size={15} color={BUILDER_ACCENT} /> Coming next
-                </div>
-                {['More automation characters', 'Template marketplace', 'Version compare and rollback'].map((item) => (
-                  <div key={item} style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 8, color: 'rgba(255,255,255,0.68)', fontFamily: 'Manrope, sans-serif', fontSize: 12 }}>
-                    <Check size={13} color={accent} /> {item}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 15, fontWeight: 700 }}>
+                    <Link2 size={15} color={accent} /> Connections &amp; credentials
                   </div>
-                ))}
+                  {canUseWorkspaceBackend && (
+                    <button type="button" onClick={refreshConnections} disabled={connBusy} style={{ padding: '6px 9px', borderRadius: 9, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.75)', fontFamily: 'Manrope, sans-serif', fontSize: 11, cursor: 'pointer' }}>
+                      {connBusy ? 'Refreshing…' : 'Refresh'}
+                    </button>
+                  )}
+                </div>
+                {!canUseWorkspaceBackend ? (
+                  <div style={{ color: 'rgba(255,255,255,0.58)', fontFamily: 'Manrope, sans-serif', fontSize: 12, lineHeight: 1.6 }}>
+                    {hasSupabaseConfig ? 'Sign in to manage workspace connections and encrypted credentials.' : 'Connect Supabase to manage stored connections and encrypted credentials.'} Provider nodes resolve them only at run time.
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      {(connections?.connections || []).map((conn) => (
+                        <div key={conn.id} style={{ padding: '10px 11px', borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: `1px solid ${BUILDER_BORD}` }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                            <div>
+                              <div style={{ color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 13, fontWeight: 700 }}>{conn.name}</div>
+                              <div style={{ color: 'rgba(255,255,255,0.56)', fontFamily: 'JetBrains Mono, monospace', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{conn.provider}{conn.credential_id ? ' · linked' : ''}</div>
+                            </div>
+                            <button type="button" onClick={() => setPendingDelete({ kind: 'connection', id: conn.id, label: conn.name })} style={{ padding: '5px 8px', borderRadius: 8, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(248,113,113,0.1)', color: '#fca5a5', fontFamily: 'Manrope, sans-serif', fontSize: 11, cursor: 'pointer' }}>Delete</button>
+                          </div>
+                        </div>
+                      ))}
+                      {(connections?.connections || []).length === 0 && (
+                        <div style={{ color: 'rgba(255,255,255,0.52)', fontFamily: 'Manrope, sans-serif', fontSize: 12, lineHeight: 1.6 }}>
+                          No connections yet. Create one below, then reference its name from a provider node's inspector.
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>
+                      <ConnectionCreate organizationId={organizationId} credentials={connections?.credentials || []} onCreated={(msg) => { setNotice(msg); refreshConnections(); }} accent={accent} border={BUILDER_BORD} />
+                      <CredentialCreate organizationId={organizationId} onCreated={(msg) => { setNotice(msg); refreshConnections(); }} accent={accent} border={BUILDER_BORD} />
+                    </div>
+                    <div style={{ marginTop: 12, color: 'rgba(255,255,255,0.42)', fontFamily: 'Manrope, sans-serif', fontSize: 11, lineHeight: 1.5 }}>
+                      Secrets are encrypted server-side with TAL_CREDENTIALS_KEY; the browser never sees ciphertext or payloads.
+                    </div>
+                  </>
+                )}
               </div>
-              <button style={{ padding: '13px 14px', borderRadius: 14, border: 'none', background: BUILDER_ACCENT, color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 800, fontSize: 13, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer' }}>
-                <Rocket size={14} /> Open paid rollout plan
-              </button>
-            </div>
+
+              <div style={{ padding: 16, borderRadius: 16, background: 'rgba(255,255,255,0.03)', border: `1px solid ${BUILDER_BORD}` }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 15, fontWeight: 700 }}>
+                    <GitBranch size={15} color={accent} /> Approvals
+                  </div>
+                  {canUseWorkspaceBackend && (
+                    <button type="button" onClick={refreshApprovals} disabled={approvalsBusy} style={{ padding: '6px 9px', borderRadius: 9, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.75)', fontFamily: 'Manrope, sans-serif', fontSize: 11, cursor: 'pointer' }}>
+                      {approvalsBusy ? 'Refreshing…' : 'Refresh'}
+                    </button>
+                  )}
+                </div>
+                {!canUseWorkspaceBackend ? (
+                  <div style={{ color: 'rgba(255,255,255,0.58)', fontFamily: 'Manrope, sans-serif', fontSize: 12, lineHeight: 1.6 }}>
+                    {hasSupabaseConfig ? 'Sign in to review workspace approval gates.' : 'Connect Supabase to review approval gates.'} Running a workflow with an Approval Atom creates a pending approval here.
+                  </div>
+                ) : approvals.length ? (
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    {approvals.map((a) => (
+                      <div key={a.id} style={{ padding: '10px 11px', borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: `1px solid ${BUILDER_BORD}` }}>
+                        <div style={{ color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 13, fontWeight: 700 }}>{a.title || 'Approval required'}</div>
+                        {a.message && <div style={{ color: 'rgba(255,255,255,0.58)', fontFamily: 'Manrope, sans-serif', fontSize: 11, lineHeight: 1.5, marginTop: 3 }}>{a.message}</div>}
+                        <div style={{ color: 'rgba(255,255,255,0.4)', fontFamily: 'JetBrains Mono, monospace', fontSize: 9, marginTop: 5, textTransform: 'uppercase', letterSpacing: '0.08em' }}>run {a.execution_id ? a.execution_id.slice(0, 8) : ''} · {new Date(a.created_at).toLocaleString()}</div>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                          <button type="button" onClick={() => handleDecideApproval(a.id, 'approve')} style={{ flex: 1, padding: '7px 10px', borderRadius: 9, border: 'none', background: accent, color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 11, cursor: 'pointer' }}>Approve</button>
+                          <button type="button" onClick={() => handleDecideApproval(a.id, 'reject')} style={{ flex: 1, padding: '7px 10px', borderRadius: 9, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(248,113,113,0.12)', color: '#fca5a5', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 11, cursor: 'pointer' }}>Reject</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ color: 'rgba(255,255,255,0.52)', fontFamily: 'Manrope, sans-serif', fontSize: 12, lineHeight: 1.6 }}>
+                    No pending approvals.
+                  </div>
+                )}
+              </div>
+
+              <div style={{ padding: 16, borderRadius: 16, background: 'rgba(255,255,255,0.03)', border: `1px solid ${BUILDER_BORD}` }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 15, fontWeight: 700 }}>
+                    <CalendarClock size={15} color={accent} /> Triggers & config
+                  </div>
+                  {canUseWorkspaceBackend && (
+                    <button type="button" onClick={refreshTriggers} disabled={triggersBusy} style={{ padding: '6px 9px', borderRadius: 9, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.75)', fontFamily: 'Manrope, sans-serif', fontSize: 11, cursor: 'pointer' }}>
+                      {triggersBusy ? 'Loading…' : 'Refresh'}
+                    </button>
+                  )}
+                </div>
+                {!canUseWorkspaceBackend ? (
+                  <div style={{ color: 'rgba(255,255,255,0.58)', fontFamily: 'Manrope, sans-serif', fontSize: 12, lineHeight: 1.6 }}>
+                    {hasSupabaseConfig ? 'Sign in to manage workspace schedules, webhooks, and variables.' : 'Connect Supabase to manage schedules, webhooks, and variables.'}
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    <div style={{ padding: '11px 12px', borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: `1px solid ${BUILDER_BORD}` }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6, color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 13, fontWeight: 700 }}>
+                        <Clock size={14} color={accent} /> Schedules
+                      </div>
+                      {!schedules.length && <div style={{ color: 'rgba(255,255,255,0.45)', fontFamily: 'Manrope, sans-serif', fontSize: 11, marginBottom: 6 }}>None yet.</div>}
+                      {schedules.map((s) => (
+                        <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '5px 0', borderBottom: `1px solid ${BUILDER_BORD}` }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ color: 'rgba(255,255,255,0.8)', fontFamily: 'Manrope, sans-serif', fontSize: 11 }}>{s.name || s.trigger_type}</div>
+                            <div style={{ color: 'rgba(255,255,255,0.4)', fontFamily: 'JetBrains Mono, monospace', fontSize: 9 }}>
+                              {s.trigger_type === 'interval' ? `every ${s.interval_seconds}s` : s.trigger_type === 'cron' ? s.cron_expr : s.schedule_time}
+                            </div>
+                          </div>
+                          <button type="button" onClick={() => { setScheduleForm(s); }} style={{ padding: '4px 8px', borderRadius: 8, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.7)', fontFamily: 'Manrope, sans-serif', fontSize: 10, cursor: 'pointer' }}>Edit</button>
+                        </div>
+                      ))}
+                      <div style={{ marginTop: 8 }}>
+                        {scheduleForm ? (
+                          <div style={{ display: 'grid', gap: 6 }}>
+                            <input value={scheduleForm.name || ''} onChange={(e) => setScheduleForm({ ...scheduleForm, name: e.target.value })} placeholder="name" style={{ padding: '6px 8px', borderRadius: 8, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(0,0,0,0.3)', color: '#fff', fontFamily: 'Manrope, sans-serif', fontSize: 11 }} />
+                            <select value={scheduleForm.trigger_type || 'interval'} onChange={(e) => setScheduleForm({ ...scheduleForm, trigger_type: e.target.value })} style={{ padding: '6px 8px', borderRadius: 8, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(0,0,0,0.3)', color: '#fff', fontFamily: 'Manrope, sans-serif', fontSize: 11 }}>
+                              <option value="interval">Interval</option>
+                              <option value="cron">Cron</option>
+                              <option value="time">Daily time</option>
+                            </select>
+                            {scheduleForm.trigger_type === 'interval' && (
+                              <input value={scheduleForm.interval_seconds || ''} onChange={(e) => setScheduleForm({ ...scheduleForm, interval_seconds: e.target.value })} placeholder="seconds (e.g. 3600)" type="number" style={{ padding: '6px 8px', borderRadius: 8, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(0,0,0,0.3)', color: '#fff', fontFamily: 'Manrope, sans-serif', fontSize: 11 }} />
+                            )}
+                            {scheduleForm.trigger_type === 'cron' && (
+                              <input value={scheduleForm.cron_expr || ''} onChange={(e) => setScheduleForm({ ...scheduleForm, cron_expr: e.target.value })} placeholder="cron (e.g. 0 9 * * *)" style={{ padding: '6px 8px', borderRadius: 8, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(0,0,0,0.3)', color: '#fff', fontFamily: 'Manrope, sans-serif', fontSize: 11 }} />
+                            )}
+                            {scheduleForm.trigger_type === 'time' && (
+                              <input value={scheduleForm.schedule_time || ''} onChange={(e) => setScheduleForm({ ...scheduleForm, schedule_time: e.target.value })} placeholder="HH:MM (e.g. 09:00)" style={{ padding: '6px 8px', borderRadius: 8, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(0,0,0,0.3)', color: '#fff', fontFamily: 'Manrope, sans-serif', fontSize: 11 }} />
+                            )}
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button type="button" onClick={handleSaveSchedule} style={{ flex: 1, padding: '7px', borderRadius: 8, border: 'none', background: accent, color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 11, cursor: 'pointer' }}>Save</button>
+                              <button type="button" onClick={() => setScheduleForm(null)} style={{ flex: 1, padding: '7px', borderRadius: 8, border: `1px solid ${BUILDER_BORD}`, background: 'transparent', color: 'rgba(255,255,255,0.7)', fontFamily: 'Manrope, sans-serif', fontSize: 11, cursor: 'pointer' }}>Cancel</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button type="button" onClick={() => { setScheduleForm({ id: undefined, name: `Schedule ${schedules.length + 1}`, trigger_type: 'interval', interval_seconds: 3600, timezone: 'UTC' }); setWebhookForm(null); setVariableForm(null); }} style={{ width: '100%', padding: '7px', borderRadius: 8, border: `1px dashed ${BUILDER_BORD}`, background: 'transparent', color: 'rgba(255,255,255,0.6)', fontFamily: 'Manrope, sans-serif', fontSize: 11, cursor: 'pointer' }}>+ Schedule</button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div style={{ padding: '11px 12px', borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: `1px solid ${BUILDER_BORD}` }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6, color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 13, fontWeight: 700 }}>
+                        <Wifi size={14} color={accent} /> Webhooks
+                      </div>
+                      {!webhooks.length && <div style={{ color: 'rgba(255,255,255,0.45)', fontFamily: 'Manrope, sans-serif', fontSize: 11, marginBottom: 6 }}>None yet.</div>}
+                      {webhooks.map((h) => (
+                        <div key={h.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '5px 0', borderBottom: `1px solid ${BUILDER_BORD}` }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ color: 'rgba(255,255,255,0.8)', fontFamily: 'Manrope, sans-serif', fontSize: 11 }}>{h.name || h.method}</div>
+                            <div style={{ color: 'rgba(255,255,255,0.4)', fontFamily: 'JetBrains Mono, monospace', fontSize: 8, wordBreak: 'break-all' }}>{h.token}</div>
+                          </div>
+                          <button type="button" onClick={async () => { await toggleWebhook(h.id, !h.enabled); refreshTriggers(); }} style={{ padding: '4px 8px', borderRadius: 8, border: `1px solid ${BUILDER_BORD}`, background: h.enabled ? 'rgba(52,211,153,0.12)' : 'rgba(255,255,255,0.04)', color: h.enabled ? '#6ee7b7' : 'rgba(255,255,255,0.5)', fontFamily: 'Manrope, sans-serif', fontSize: 10, cursor: 'pointer' }}>{h.enabled ? 'On' : 'Off'}</button>
+                        </div>
+                      ))}
+                      {webhookForm ? (
+                        <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
+                          <input autoFocus value={webhookForm.name || ''} onChange={(e) => setWebhookForm({ ...webhookForm, name: e.target.value })} placeholder="name" style={{ padding: '6px 8px', borderRadius: 8, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(0,0,0,0.3)', color: '#fff', fontFamily: 'Manrope, sans-serif', fontSize: 11 }} />
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button type="button" onClick={handleSaveWebhook} style={{ flex: 1, padding: '7px', borderRadius: 8, border: 'none', background: accent, color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 11, cursor: 'pointer' }}>Create</button>
+                            <button type="button" onClick={() => setWebhookForm(null)} style={{ flex: 1, padding: '7px', borderRadius: 8, border: `1px solid ${BUILDER_BORD}`, background: 'transparent', color: 'rgba(255,255,255,0.7)', fontFamily: 'Manrope, sans-serif', fontSize: 11, cursor: 'pointer' }}>Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button type="button" onClick={() => { setWebhookForm({ name: 'Webhook' }); setScheduleForm(null); setVariableForm(null); }} style={{ width: '100%', marginTop: 8, padding: '7px', borderRadius: 8, border: `1px dashed ${BUILDER_BORD}`, background: 'transparent', color: 'rgba(255,255,255,0.6)', fontFamily: 'Manrope, sans-serif', fontSize: 11, cursor: 'pointer' }}>+ Webhook</button>
+                      )}
+                    </div>
+
+                    <div style={{ padding: '11px 12px', borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: `1px solid ${BUILDER_BORD}` }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6, color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontSize: 13, fontWeight: 700 }}>
+                        <KeyRound size={14} color={accent} /> Variables
+                      </div>
+                      {!variables.length && <div style={{ color: 'rgba(255,255,255,0.45)', fontFamily: 'Manrope, sans-serif', fontSize: 11, marginBottom: 6 }}>None yet.</div>}
+                      {variables.map((v) => (
+                        <div key={v.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '5px 0', borderBottom: `1px solid ${BUILDER_BORD}` }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ color: 'rgba(255,255,255,0.8)', fontFamily: 'Manrope, sans-serif', fontSize: 11 }}>{v.key}</div>
+                            <div style={{ color: 'rgba(255,255,255,0.4)', fontFamily: 'JetBrains Mono, monospace', fontSize: 9 }}>{v.value_type}</div>
+                          </div>
+                          <button type="button" onClick={() => setPendingDelete({ kind: 'variable', id: v.id, label: v.key })} style={{ padding: '4px 8px', borderRadius: 8, border: `1px solid rgba(239,68,68,0.35)`, background: 'rgba(239,68,68,0.08)', color: '#fca5a5', fontFamily: 'Manrope, sans-serif', fontSize: 10, cursor: 'pointer' }}>Delete</button>
+                        </div>
+                      ))}
+                      {variableForm ? (
+                        <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
+                          <input value={variableForm.key || ''} onChange={(e) => setVariableForm({ ...variableForm, key: e.target.value })} placeholder="key (e.g. api_key)" style={{ padding: '6px 8px', borderRadius: 8, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(0,0,0,0.3)', color: '#fff', fontFamily: 'Manrope, sans-serif', fontSize: 11 }} />
+                          <input value={variableForm.value || ''} onChange={(e) => setVariableForm({ ...variableForm, value: e.target.value })} placeholder="value" style={{ padding: '6px 8px', borderRadius: 8, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(0,0,0,0.3)', color: '#fff', fontFamily: 'Manrope, sans-serif', fontSize: 11 }} />
+                          <div style={{ color: 'rgba(255,255,255,0.46)', fontFamily: 'Manrope, sans-serif', fontSize: 10, lineHeight: 1.45 }}>Variables are visible workspace data. Store API keys and tokens in Credentials.</div>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button type="button" onClick={handleSaveVariable} style={{ flex: 1, padding: '7px', borderRadius: 8, border: 'none', background: accent, color: '#fff', fontFamily: 'Bricolage Grotesque, sans-serif', fontWeight: 700, fontSize: 11, cursor: 'pointer' }}>Save</button>
+                            <button type="button" onClick={() => setVariableForm(null)} style={{ flex: 1, padding: '7px', borderRadius: 8, border: `1px solid ${BUILDER_BORD}`, background: 'transparent', color: 'rgba(255,255,255,0.7)', fontFamily: 'Manrope, sans-serif', fontSize: 11, cursor: 'pointer' }}>Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button type="button" onClick={() => { setVariableForm({ key: '', value: '' }); setScheduleForm(null); setWebhookForm(null); }} style={{ width: '100%', marginTop: 8, padding: '7px', borderRadius: 8, border: `1px dashed ${BUILDER_BORD}`, background: 'transparent', color: 'rgba(255,255,255,0.6)', fontFamily: 'Manrope, sans-serif', fontSize: 11, cursor: 'pointer' }}>+ Variable</button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+            </div>}
           </aside>
         </div>
       </div>
+      {pendingDelete && (
+        <div className="builder-confirm" role="dialog" aria-modal="true" aria-labelledby="builder-confirm-title" onClick={() => setPendingDelete(null)}>
+          <div className="builder-confirm__card" onClick={(event) => event.stopPropagation()}>
+            <span className="builder-confirm__icon"><Trash2 size={18} /></span>
+            <div>
+              <h2 id="builder-confirm-title">Delete {pendingDelete.label}?</h2>
+              <p>This removes the saved item from this workspace. This action cannot be undone.</p>
+            </div>
+            <div className="builder-confirm__actions">
+              <button type="button" onClick={() => setPendingDelete(null)}>Cancel</button>
+              <button type="button" data-danger="true" onClick={confirmPendingDelete}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
     </WrapperTag>
   );
 }
