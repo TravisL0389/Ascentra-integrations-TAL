@@ -917,7 +917,15 @@ const BuilderPage = ({ onBack }) => {
                         </button>
                       );
                     })}
-                    <button style={{ display:'flex', alignItems:'center', gap:9, width:'100%', padding:'11px 14px', border:'none', background:'transparent', color:ACCENT, cursor:'pointer', textAlign:'left', fontFamily:'Bricolage Grotesque, sans-serif', fontSize:12, fontWeight:700 }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        console.log('[Ascentra] New workflow draft requested from switcher.');
+                        setWfId(WORKFLOWS[0]?.id || '');
+                        setSwitcherOpen(false);
+                      }}
+                      style={{ display:'flex', alignItems:'center', gap:9, width:'100%', padding:'11px 14px', border:'none', background:'transparent', color:ACCENT, cursor:'pointer', textAlign:'left', fontFamily:'Bricolage Grotesque, sans-serif', fontSize:12, fontWeight:700 }}
+                    >
                       <PlusCircle size={13}/> New workflow
                     </button>
                   </div>
@@ -949,7 +957,14 @@ const BuilderPage = ({ onBack }) => {
               style={{ padding:'8px 16px', borderRadius:9, border:'none', background:ACCENT, color:'#000', fontFamily:'Bricolage Grotesque, sans-serif', fontWeight:700, fontSize:12, cursor:runState.mode==='running'?'default':'pointer', opacity:runState.mode==='running'?0.6:1, display:'inline-flex', alignItems:'center', gap:6, boxShadow:`0 6px 18px rgba(0,201,167,0.3)` }}>
               <Play size={12}/> Test Run
             </button>
-            <button style={{ padding:'8px 16px', borderRadius:9, border:'none', background:'#fff', color:'#000', fontFamily:'Bricolage Grotesque, sans-serif', fontWeight:700, fontSize:12, cursor:'pointer', display:'inline-flex', alignItems:'center', gap:6 }}>
+            <button
+              type="button"
+              onClick={() => {
+                console.log('[Ascentra] Deploy preview requested.');
+                setRunState((current) => ({ ...current, mode: 'success' }));
+              }}
+              style={{ padding:'8px 16px', borderRadius:9, border:'none', background:'#fff', color:'#000', fontFamily:'Bricolage Grotesque, sans-serif', fontWeight:700, fontSize:12, cursor:'pointer', display:'inline-flex', alignItems:'center', gap:6 }}
+            >
               <Rocket size={12}/> Deploy
             </button>
           </div>
@@ -1299,7 +1314,14 @@ const AgentWorkspacePage = ({ agent, onBack, onDocs, onOpenBuilder }) => {
         <div style={{ padding:28, borderRadius:18, border:`1px solid ${BORD}`, background:SURF }}>
           <h3 style={{ fontFamily:'Bricolage Grotesque, sans-serif', fontSize:24, margin:'0 0 18px', color:'#fff' }}>Ready prompts</h3>
           {agent.prompts.map((prompt, i)=>(
-            <button key={prompt} style={{ width:'100%', textAlign:'left', padding:'14px 16px', marginBottom:10, borderRadius:10, border:`1px solid ${agent.color}24`, background:`${agent.color}08`, color:'rgba(255,255,255,0.82)', fontFamily:'Manrope, sans-serif', fontSize:13, cursor:'pointer' }}>
+            <button
+              key={prompt}
+              type="button"
+              onClick={() => {
+                console.log(`[Ascentra Expanded] Ready prompt selected for ${agent.name}: ${prompt}`);
+              }}
+              style={{ width:'100%', textAlign:'left', padding:'14px 16px', marginBottom:10, borderRadius:10, border:`1px solid ${agent.color}24`, background:`${agent.color}08`, color:'rgba(255,255,255,0.82)', fontFamily:'Manrope, sans-serif', fontSize:13, cursor:'pointer' }}
+            >
               {prompt}
             </button>
           ))}

@@ -1,12 +1,15 @@
 # Ascentra Integrations
 
-Ascentra Integrations is a Vite + React application with a dedicated Atom Builder workspace and a Supabase-backed automation layer.
+Ascentra Integrations is a Vite + React app hosting Ascentra's cross-app
+automation builder ("Atom Builder") and a native, Supabase-owned execution
+engine. Every atom run is real: flows snapshot into versioned graphs, a worker
+drains them from a persistent job queue, and node traces land in the database.
 
 ## Requirements
 
-- Node.js `20.19.0` or newer
+- Node.js `20.19.0` or newer (see `.nvmrc`)
 - npm
-- A Supabase project if you want backend saves, run history, and live automation execution
+- A Supabase project for saves, run history, and native execution
 
 ## Local development
 
@@ -17,38 +20,56 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Frontend-only browsing works without Supabase, but backend-connected builder behavior requires environment variables.
+Frontend-only browsing works without Supabase; saves, exec history, and native
+runs require the environment keys and the Supabase setup below.
 
 ## Environment variables
 
-Create `.env.local` for local work, or set these in your deployment provider:
+See `.env.example`. The app needs:
 
-```bash
-VITE_SUPABASE_URL=https://your-project-id.supabase.co
-VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
-```
+- `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` — browser client
+- `TAL_WORKER_KEY`, `TAL_CREDENTIALS_KEY` — edge-function secrets (never shipped to the browser)
 
-## Deployment
+## Native execution engine
 
-This repo is prepared for Vercel deployment:
+The core run loop is fully TAL-owned and does not depend on Make.com:
 
-- `vite.config.js` explicitly configures the Vite React app
-- `vercel.json` adds the SPA rewrite fallback to `index.html`
-- `.nvmrc` pins a Vite 7 compatible Node version
+- **Manual Trigger → Transform → Branch → HTTP Request** runs through
+  `create-execution` → `tal-worker` without any external automation tool
+- Atoms: `trigger`, `transform`, `branch` (n8n-style passthrough with
+  `_talBranch` metadata), `delay`, `approval`, `http` (SSRF-protected), `make`
+- Expressions (e.g. `{{ previous.output.field }}`) including array literals and
+  `coalesce`; no `eval()`
+- Retries, per-node attempts, branch routes, and captured output/errors are
+  recorded in `execution_node_runs` + `execution_events`
 
-### Vercel steps
+## Commands
 
-1. Import the GitHub repo into Vercel.
-2. Set the framework to `Vite` if Vercel does not detect it automatically.
-3. Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the Vercel project environment settings.
-4. Deploy.
+| Command              | Purpose                                  |
+| -------------------- | ---------------------------------------- |
+| `npm run dev`        | Vite dev server                          |
+| `npm run build`      | Production build                         |
+| `npm run test`       | Vitest suite (engine, atoms, expressions) |
+| `npm run typecheck`  | `tsc --noEmit` over the shared engine    |
 
 ## Supabase backend
 
-The frontend host is only one half of deployment. For the Atom Builder backend to be fully live, also complete the steps in [SUPABASE_SETUP.md](./SUPABASE_SETUP.md):
+Follow [SUPABASE_SETUP.md](./SUPABASE_SETUP.md):
 
-- run the database migration
-- deploy `supabase/functions/execute-automation`
-- set Supabase function secrets
+1. Apply the three migrations (automation backend, shared SaaS core, native execution engine)
+2. Deploy the edge functions (`create-execution`, `tal-worker`, `tal-hooks`, `tal-scheduler`, `tal-approval`, `tal-credentials`, `execute-automation`)
+3. Set function secrets (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `TAL_WORKER_KEY`, `TAL_CREDENTIALS_KEY`)
 
-Without that backend setup, the app still deploys, but the builder stays in frontend/local preview mode for save and execution features.
+## Deployment
+
+Prepared for Vercel:
+
+- `vite.config.js` configures the React app
+- `vercel.json` adds the SPA rewrite fallback
+- Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the Vercel environment
+
+## Shared SaaS core
+
+The workspace shell includes auth, organizations, memberships, subscriptions,
+usage counters, and integration connections. Saves and executions are scoped to
+the user's organization, with RLS enforcing tenant isolation.

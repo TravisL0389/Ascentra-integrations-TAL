@@ -1,0 +1,39 @@
+# Supabase local development configuration.
+# Used by `supabase start` / `supabase functions serve` for the local stack.
+# Cloud behavior for deployed projects is configured in the Supabase dashboard.
+
+project_id = "ascentra-integrations"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 5000
+
+[db]
+enabled = true
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+
+[edge_runtime]
+enabled = true
+# Request policies: `per_worker` (default, hot reload) or `oneshot`.
+policy = "per_worker"
+inspector_port = 8085
+
+# Per-function JWT enforcement is configured in the Supabase dashboard
+# (defaults to true for all deployed functions; every function also enforces
+# member-JWT / service-key auth in code).
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:5173"
+additional_redirect_urls = ["http://localhost:5173", "http://127.0.0.1:4173"]
+jwt_expiry = 3600
+enable_signup = true

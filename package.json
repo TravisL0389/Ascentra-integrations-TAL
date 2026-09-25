@@ -9,7 +9,11 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "validate:navigation": "node scripts/validate-navigation.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",
@@ -17,8 +21,11 @@
     "lucide-react": "^0.468.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "three": "^0.185.1",
     "typescript": "^5.9.2",
     "vite": "^7.1.7"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "vitest": "^3.2.7"
+  }
 }
