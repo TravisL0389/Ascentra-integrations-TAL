@@ -340,6 +340,48 @@ select {
   min-width: 0;
 }
 
+.atom-builder-page__menu {
+  display: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--panel-border);
+  border-radius: 0.7rem;
+  background: rgba(255, 255, 255, 0.04);
+  color: #fff;
+  cursor: pointer;
+}
+
+.atom-builder-page__nav {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-left: auto;
+}
+
+.atom-builder-page__nav button {
+  min-height: 2.5rem;
+  padding: 0 0.8rem;
+  border: 0;
+  border-radius: 0.65rem;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.58);
+  font: 700 0.72rem/1 'Bricolage Grotesque', sans-serif;
+  cursor: pointer;
+}
+
+.atom-builder-page__nav button:hover,
+.atom-builder-page__nav button.active {
+  background: rgba(0, 201, 167, 0.12);
+  color: #fff;
+}
+
+.atom-builder-page__navClose {
+  display: none;
+}
+
 .atom-builder-page__identity > span:last-child {
   display: grid;
   min-width: 0;
@@ -449,6 +491,8 @@ select {
   box-shadow: 0 1.5rem 4rem rgba(63, 15, 85, 0.18);
   border-bottom: 0.625rem solid #a855f7;
   overflow: hidden;
+  touch-action: none;
+  overscroll-behavior: contain;
 }
 
 .three-builder-backdrop,
@@ -825,6 +869,7 @@ select {
   color: #fff;
   text-align: left;
   cursor: pointer;
+  min-height: 2.75rem;
 }
 
 .builder-quick-add__list button:hover {
@@ -1283,4 +1328,102 @@ select {
   .builder-stage__canvas {
     border-radius: 1.25rem;
   }
+}
+
+/* The builder keeps its graph spatially independent while its surrounding tools
+   become scrollable touch surfaces at tablet and phone widths. */
+@media (max-width: 1024px) {
+  .builder-palette,
+  .builder-inspector {
+    max-height: 42vh;
+    overflow: auto !important;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+
+  .builder-palette { order: 2; }
+  .builder-workspace { order: 1; }
+  .builder-inspector { order: 3; }
+}
+
+@media (max-width: 768px) {
+  .atom-page--builder {
+    padding: max(0.55rem, env(safe-area-inset-top)) 0.55rem max(0.55rem, env(safe-area-inset-bottom));
+  }
+
+  .atom-builder-page__menu {
+    display: inline-flex;
+  }
+
+  .atom-builder-page__nav {
+    position: fixed;
+    z-index: 200;
+    inset: 0 auto 0 0;
+    display: grid;
+    align-content: start;
+    gap: 0.35rem;
+    width: min(19rem, 88vw);
+    padding: 5rem 1rem 1rem;
+    border-right: 1px solid var(--panel-border);
+    background: #080d18;
+    box-shadow: 1rem 0 3rem rgba(0, 0, 0, 0.4);
+    transform: translateX(-105%);
+    transition: transform 180ms ease;
+  }
+
+  .atom-builder-page__nav.open { transform: translateX(0); }
+
+  .atom-builder-page__nav button {
+    width: 100%;
+    min-height: 3.1rem;
+    padding: 0 1rem;
+    text-align: left;
+    font-size: 0.82rem;
+  }
+
+  .atom-builder-page__navClose {
+    display: inline-flex !important;
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    width: 2.5rem !important;
+    align-items: center;
+    justify-content: center;
+    padding: 0 !important;
+  }
+
+  .builder-stage {
+    height: min(62vh, 38rem);
+    min-height: 25rem;
+  }
+
+  .builder-palette { max-height: 34vh; }
+  .builder-inspector { max-height: 45vh; }
+
+  .builder-palette > div:last-child {
+    display: flex;
+    gap: 0.7rem;
+    overflow-x: auto;
+    padding: 0.75rem;
+    touch-action: pan-x;
+  }
+
+  .builder-palette > div:last-child > div { min-width: 13rem; }
+
+  .builder-canvas-toolbar,
+  .builder-canvas-toolbar__group {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .builder-canvas-toolbar__button,
+  .builder-canvas-toolbar__pill { min-height: 2.75rem; flex: 0 0 auto; }
+
+  .builder-scenario-header input { font-size: 1.25rem !important; text-overflow: ellipsis; }
+
+  .builder-palette input,
+  .builder-inspector input,
+  .builder-inspector textarea,
+  .builder-inspector select { font-size: 16px !important; }
 }

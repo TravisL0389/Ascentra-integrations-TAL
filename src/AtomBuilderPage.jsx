@@ -1,4 +1,5 @@
-import { ArrowLeft, Crown, Shield, Workflow } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ArrowLeft, Crown, Menu, Shield, Workflow, X } from 'lucide-react';
 import AutomationAtomBuilder from './AutomationAtomBuilder.jsx';
 
 const fallbackPlans = [
@@ -16,6 +17,7 @@ export default function AtomBuilderPage({
   onSeePricing = null,
   onOpenAdminLab = null,
 }) {
+  const [navOpen, setNavOpen] = useState(false);
   const safePlans = plans.length ? plans : fallbackPlans;
   const workspace = workspaceAccount?.snapshot?.workspace || null;
   const activePlan = safePlans.find((plan) => plan.name === selectedPlan) || safePlans.find((plan) => plan.name === 'Pro') || safePlans[0];
@@ -23,10 +25,29 @@ export default function AtomBuilderPage({
     ? { organizationId: workspace.organizationId, userId: workspaceAccount?.user?.id || null }
     : null;
 
+  useEffect(() => {
+    const closeOnEscape = (event) => { if (event.key === 'Escape') setNavOpen(false); };
+    const closeOnOutside = (event) => {
+      if (navOpen && !event.target.closest?.('.atom-builder-page__nav, .atom-builder-page__menu')) setNavOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    document.addEventListener('pointerdown', closeOnOutside);
+    return () => {
+      window.removeEventListener('keydown', closeOnEscape);
+      document.removeEventListener('pointerdown', closeOnOutside);
+    };
+  }, [navOpen]);
+
+  const navigate = (callback) => {
+    setNavOpen(false);
+    callback?.();
+  };
+
   return (
     <main className="atom-page atom-page--builder">
       <header className="atom-builder-page__header">
         <div className="atom-builder-page__identity">
+          <button type="button" className="atom-builder-page__menu" aria-label="Open navigation" aria-expanded={navOpen} onClick={() => setNavOpen((open) => !open)}><Menu size={19} /></button>
           {onBack && (
             <button type="button" className="atom-page__action" onClick={onBack} aria-label="Back to platform">
               <ArrowLeft size={16} /> Platform
@@ -38,6 +59,13 @@ export default function AtomBuilderPage({
             <strong>{workspace?.workspaceName || 'Ascentra workspace'}</strong>
           </span>
         </div>
+        <nav className={`atom-builder-page__nav${navOpen ? ' open' : ''}`} aria-label="Workspace navigation">
+          <button type="button" onClick={() => navigate(onBack)}>Dashboard</button>
+          <button type="button" className="active" aria-current="page">Atom Builder</button>
+          {onSeePricing && <button type="button" onClick={() => navigate(onSeePricing)}>Plans</button>}
+          {onOpenAdminLab && <button type="button" onClick={() => navigate(onOpenAdminLab)}>Admin Lab</button>}
+          <button type="button" className="atom-builder-page__navClose" aria-label="Close navigation" onClick={() => setNavOpen(false)}><X size={16} /></button>
+        </nav>
         <div className="atom-builder-page__actions">
           <span className="atom-builder-page__plan">{activePlan?.name || 'Pro'}</span>
           {onSeePricing && (

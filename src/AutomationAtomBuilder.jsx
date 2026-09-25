@@ -848,9 +848,18 @@ export default function AutomationAtomBuilder({
   const [managementOpen, setManagementOpen] = useState(false);
   const [quickAddNodeId, setQuickAddNodeId] = useState(null);
   const [quickAddQuery, setQuickAddQuery] = useState('');
+  const [canvasPan, setCanvasPan] = useState({ x: 0, y: 0 });
+  const [touchAtomDrag, setTouchAtomDrag] = useState(null);
+  const [canvasGesture, setCanvasGesture] = useState(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
   const clipboardRef = useRef(null);
+  const quickAddRef = useRef(null);
+  const canvasGestureRef = useRef(null);
+  const recentCanvasPanRef = useRef(false);
+  const canvasPointersRef = useRef(new Map());
+  const pinchRef = useRef(null);
+  const recentTouchDropRef = useRef(false);
 
   const planRule = PLAN_RULES[activePlanName];
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) || null;
@@ -1087,6 +1096,10 @@ export default function AutomationAtomBuilder({
     setValidationOpen(false);
     setRunConsoleOpen(false);
     setQuickAddNodeId(null);
+    setQuickAddQuery('');
+    setCanvasPan({ x: 0, y: 0 });
+    setTouchAtomDrag(null);
+    setCanvasGesture(null);
     resetGraphHistory();
   };
 
@@ -1110,8 +1123,8 @@ export default function AutomationAtomBuilder({
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect || rect.width === 0 || rect.height === 0) return null;
     return {
-      x: Math.max(52, Math.min(1228, ((clientX - rect.left) / rect.width) * 1280)),
-      y: Math.max(72, Math.min(708, ((clientY - rect.top) / rect.height) * 760)),
+      x: Math.max(52, Math.min(1228, ((clientX - rect.left) / rect.width) * 1280 - canvasPan.x / zoomScale)),
+      y: Math.max(72, Math.min(708, ((clientY - rect.top) / rect.height) * 760 - canvasPan.y / zoomScale)),
     };
   };
 
@@ -2059,6 +2072,9 @@ export default function AutomationAtomBuilder({
   const activePlanCard = plans.find((plan) => plan.name === activePlanName);
 
   const startDragging = (event, node) => {
+    if (event.pointerType && event.pointerType !== 'mouse' && event.button !== 0) return;
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
     const point = toCanvasPoint(event.clientX, event.clientY);
     if (!point) return;
     const pos = getPosition(node);
@@ -2068,6 +2084,7 @@ export default function AutomationAtomBuilder({
       id: node.id,
       offsetX: point.x - pos.x,
       offsetY: point.y - pos.y,
+      pointerId: event.pointerId,
     });
   };
 
@@ -2136,13 +2153,96 @@ export default function AutomationAtomBuilder({
       }
     };
 
-    window.addEventListener('mousemove', handleMove);
-    window.addEventListener('mouseup', handleUp);
+    window.addEventListener('pointermove', handleMove, { passive: false });
+    window.addEventListener('pointerup', handleUp);
+    window.addEventListener('pointercancel', handleUp);
     return () => {
-      window.removeEventListener('mousemove', handleMove);
-      window.removeEventListener('mouseup', handleUp);
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+      window.removeEventListener('pointercancel', handleUp);
     };
   }, [dragState, connectState]);
+
+  useEffect(() => {
+    const handleEscape = (event) => {
+      if (event.key !== 'Escape') return;
+      setQuickAddNodeId(null);
+      setQuickAddQuery('');
+      setManagementOpen(false);
+      setCanvasGesture(null);
+    };
+    const handleOutsidePointer = (event) => {
+      if (!quickAddNodeId) return;
+      const target = event.target;
+      if (target instanceof Element && (target.closest('.builder-quick-add') || target.closest('.builder-node__addNext'))) return;
+      setQuickAddNodeId(null);
+      setQuickAddQuery('');
+    };
+    window.addEventListener('keydown', handleEscape);
+    document.addEventListener('pointerdown', handleOutsidePointer);
+    return () => {
+      window.removeEventListener('keydown', handleEscape);
+      document.removeEventListener('pointerdown', handleOutsidePointer);
+    };
+  }, [quickAddNodeId]);
+
+  useEffect(() => {
+    if (!touchAtomDrag && !canvasGesture) return undefined;
+    const handleMove = (event) => {
+      if (canvasPointersRef.current.has(event.pointerId)) {
+        canvasPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      }
+      if (canvasPointersRef.current.size >= 2) {
+        const points = [...canvasPointersRef.current.values()];
+        const distance = Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+        if (!pinchRef.current) pinchRef.current = { distance, zoom };
+        setZoom(Math.max(70, Math.min(140, Math.round((pinchRef.current.zoom * distance / pinchRef.current.distance) / 5) * 5)));
+        return;
+      }
+      if (touchAtomDrag) {
+        const point = toCanvasPoint(event.clientX, event.clientY);
+        if (point) setTouchAtomDrag((current) => ({ ...current, point }));
+      }
+      if (canvasGestureRef.current) {
+        const gesture = canvasGestureRef.current;
+        const dx = event.clientX - gesture.clientX;
+        const dy = event.clientY - gesture.clientY;
+        if (Math.abs(dx) + Math.abs(dy) > 4) gesture.moved = true;
+        setCanvasPan({ x: gesture.originX + dx, y: gesture.originY + dy });
+      }
+    };
+    const handleUp = (event) => {
+      canvasPointersRef.current.delete(event.pointerId);
+      if (canvasPointersRef.current.size < 2) {
+        pinchRef.current = null;
+        if (!canvasGestureRef.current) setCanvasGesture(null);
+      }
+      if (touchAtomDrag) {
+        const rect = canvasRef.current?.getBoundingClientRect();
+        const insideCanvas = rect && event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
+        if (insideCanvas && touchAtomDrag.point) {
+          appendAtom(touchAtomDrag.item, false, { point: touchAtomDrag.point, connect: false });
+          recentTouchDropRef.current = true;
+          window.setTimeout(() => { recentTouchDropRef.current = false; }, 250);
+        }
+        setTouchAtomDrag(null);
+      }
+      if (canvasGestureRef.current) {
+        recentCanvasPanRef.current = canvasGestureRef.current.moved;
+        if (recentCanvasPanRef.current) window.setTimeout(() => { recentCanvasPanRef.current = false; }, 120);
+        canvasGestureRef.current = null;
+        setCanvasGesture(null);
+      }
+    };
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleUp);
+    window.addEventListener('pointercancel', handleUp);
+    return () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+      window.removeEventListener('pointercancel', handleUp);
+    };
+  }, [touchAtomDrag, canvasGesture]);
 
   useEffect(() => {
     refreshSavedFlows();
@@ -2340,7 +2440,7 @@ export default function AutomationAtomBuilder({
               minHeight: immersiveMode ? `calc(${workspaceMinHeight} - 146px)` : 'auto',
             }}
           >
-          <aside style={{ borderRadius: 18, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(8,12,22,0.82)', boxShadow: '0 20px 45px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+          <aside className="builder-palette" style={{ borderRadius: 18, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(8,12,22,0.82)', boxShadow: '0 20px 45px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
             <div style={{ padding: '18px 18px 14px', borderBottom: `1px solid ${BUILDER_BORD}` }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <div>
@@ -2398,11 +2498,16 @@ export default function AutomationAtomBuilder({
                         key={item.id}
                         type="button"
                         draggable={planRule.editable}
+                        onPointerDown={(event) => {
+                          if (event.pointerType === 'mouse' || !planRule.editable) return;
+                          event.preventDefault();
+                          setTouchAtomDrag({ item, point: toCanvasPoint(event.clientX, event.clientY) });
+                        }}
                         onDragStart={(event) => {
                           event.dataTransfer.setData('application/x-ascentra-atom', item.id);
                           event.dataTransfer.effectAllowed = 'copy';
                         }}
-                        onClick={() => appendAtom(item)}
+                        onClick={() => { if (!recentTouchDropRef.current) appendAtom(item); }}
                         onContextMenu={(event) => { event.preventDefault(); appendAtom(item); }}
                         style={{
                           width: '100%',
@@ -2433,7 +2538,7 @@ export default function AutomationAtomBuilder({
             </div>
           </aside>
 
-          <section style={{ borderRadius: 20, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(10,14,22,0.82)', boxShadow: '0 24px 60px rgba(0,0,0,0.28)', overflow: 'hidden' }}>
+          <section className="builder-workspace" style={{ borderRadius: 20, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(10,14,22,0.82)', boxShadow: '0 24px 60px rgba(0,0,0,0.28)', overflow: 'hidden' }}>
             <div className="builder-scenario-header" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '16px 18px', borderBottom: `1px solid ${BUILDER_BORD}`, flexWrap: 'wrap', alignItems: 'center' }}>
               <div style={{ minWidth: 260, flex: '1 1 320px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
@@ -2628,7 +2733,28 @@ export default function AutomationAtomBuilder({
                     const point = toCanvasPoint(event.clientX, event.clientY);
                     if (item && point) appendAtom(item, false, { point, connect: false });
                   }}
+                  onPointerDown={(event) => {
+                    if (event.pointerType === 'mouse' && event.button !== 0) return;
+                    if (event.target.closest?.('.builder-node, .builder-node__addNext, button')) return;
+                    event.preventDefault();
+                    event.currentTarget.setPointerCapture?.(event.pointerId);
+                    canvasPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+                    if (canvasPointersRef.current.size >= 2) {
+                      const points = [...canvasPointersRef.current.values()];
+                      pinchRef.current = { distance: Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y), zoom };
+                      canvasGestureRef.current = null;
+                      return;
+                    }
+                    canvasGestureRef.current = { clientX: event.clientX, clientY: event.clientY, originX: canvasPan.x, originY: canvasPan.y, moved: false };
+                    setCanvasGesture({ pointerId: event.pointerId });
+                  }}
+                  onWheel={(event) => {
+                    if (!event.ctrlKey) return;
+                    event.preventDefault();
+                    setZoom((value) => Math.max(70, Math.min(140, value + (event.deltaY < 0 ? 5 : -5))));
+                  }}
                   onClick={() => {
+                    if (recentCanvasPanRef.current || canvasGestureRef.current?.moved) return;
                     if (connectState) {
                       setConnectState(null);
                       setPointerPos(null);
@@ -2640,6 +2766,7 @@ export default function AutomationAtomBuilder({
                     }
                   }}
                   className="builder-stage__canvas"
+                  style={{ touchAction: 'none' }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 16px', borderBottom: '1px solid rgba(90,82,110,0.08)', background: 'linear-gradient(180deg, rgba(255,255,255,0.96), rgba(246,242,251,0.92))' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -2666,7 +2793,7 @@ export default function AutomationAtomBuilder({
                   <div className="builder-stage__grid" />
                   <div className="builder-stage__glow" />
 
-                  <div style={{ position: 'absolute', inset: 0, transform: `scale(${zoomScale})`, transformOrigin: 'center center' }}>
+                    <div style={{ position: 'absolute', inset: 0, transform: `translate(${canvasPan.x}px, ${canvasPan.y}px) scale(${zoomScale})`, transformOrigin: 'center center' }}>
                     <svg viewBox="0 0 1280 760" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
                       <defs>
                         <linearGradient id="edgeStroke" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -2745,7 +2872,7 @@ export default function AutomationAtomBuilder({
                                 setSelectedNodeId(node.id);
                                 setCanvasMode('inspect');
                               }}
-                              onMouseDown={(event) => {
+                              onPointerDown={(event) => {
                                 event.stopPropagation();
                                 setCanvasMode('build');
                                 startDragging(event, node);
@@ -2761,11 +2888,11 @@ export default function AutomationAtomBuilder({
                             </button>
 
                             {getPorts(node, 'input').map((port, index) => (
-                              <button key={`in-${port.id}`} title={port.label} onClick={(event) => completeConnection(event, node.id)} disabled={!canReceive} style={{ position: 'absolute', left: -10, top: `${18 + index * 20}%`, width: 20, height: 20, borderRadius: '50%', border: '2px solid rgba(82,68,104,0.22)', background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: canReceive ? 'pointer' : 'default', opacity: connectState ? 1 : 0.82, zIndex: 3 }}><div style={{ width: 8, height: 8, borderRadius: '50%', background: canReceive ? BUILDER_ACCENT : 'rgba(92,81,109,0.4)' }} /></button>
+                              <button key={`in-${port.id}`} title={port.label} aria-label={`Connect to ${node.title}, ${port.label}`} onPointerDown={(event) => completeConnection(event, node.id)} disabled={!canReceive} style={{ position: 'absolute', left: -20, top: `calc(${18 + index * 20}% - 10px)`, width: 40, height: 40, padding: 0, borderRadius: '50%', border: '0', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: canReceive ? 'pointer' : 'default', opacity: connectState ? 1 : 0.82, zIndex: 3 }}><div style={{ width: 10, height: 10, borderRadius: '50%', border: '2px solid rgba(82,68,104,0.22)', background: canReceive ? BUILDER_ACCENT : 'rgba(92,81,109,0.4)' }} /></button>
                             ))}
 
                             {getPorts(node, 'output').map((port, index) => (
-                              <button key={`out-${port.id}`} title={port.label} onClick={(event) => { setCanvasMode('connect'); startConnection(event, node.id, port.id); }} style={{ position: 'absolute', right: -10, top: `${18 + index * 20}%`, width: 20, height: 20, borderRadius: '50%', border: '2px solid rgba(82,68,104,0.22)', background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'crosshair', zIndex: 3 }}><div style={{ width: 8, height: 8, borderRadius: '50%', background: isSource ? BUILDER_ACCENT : 'rgba(92,81,109,0.68)' }} /></button>
+                              <button key={`out-${port.id}`} title={port.label} aria-label={`Connect from ${node.title}, ${port.label}`} onPointerDown={(event) => { setCanvasMode('connect'); startConnection(event, node.id, port.id); }} style={{ position: 'absolute', right: -20, top: `calc(${18 + index * 20}% - 10px)`, width: 40, height: 40, padding: 0, borderRadius: '50%', border: '0', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'crosshair', zIndex: 3 }}><div style={{ width: 10, height: 10, borderRadius: '50%', border: '2px solid rgba(82,68,104,0.22)', background: isSource ? BUILDER_ACCENT : 'rgba(92,81,109,0.68)' }} /></button>
                             ))}
                             {planRule.editable && (
                               <button
@@ -2778,7 +2905,7 @@ export default function AutomationAtomBuilder({
                               </button>
                             )}
                             {quickAddNodeId === node.id && (
-                              <div className="builder-quick-add" onClick={(event) => event.stopPropagation()}>
+                                <div ref={quickAddRef} className="builder-quick-add" role="dialog" aria-label={`Add an Atom after ${node.title}`} onClick={(event) => event.stopPropagation()}>
                                 <div className="builder-quick-add__search">
                                   <Search size={13} />
                                   <input autoFocus value={quickAddQuery} onChange={(event) => setQuickAddQuery(event.target.value)} placeholder="Add next Atom" />
@@ -2832,7 +2959,7 @@ export default function AutomationAtomBuilder({
             </div>
           </section>
 
-          <aside style={{ borderRadius: 18, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(8,12,22,0.82)', boxShadow: '0 20px 45px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+          <aside className="builder-inspector" style={{ borderRadius: 18, border: `1px solid ${BUILDER_BORD}`, background: 'rgba(8,12,22,0.82)', boxShadow: '0 20px 45px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
             <div style={{ padding: '18px 18px 14px', borderBottom: `1px solid ${BUILDER_BORD}` }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                 <div>
